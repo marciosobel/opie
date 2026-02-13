@@ -4,7 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-iced = "0.14.0"
+anyhow = "1.0.101"
+dirs = "6.0.0"
+iced = { version = "0.14.0", features = ["advanced", "tokio"] }
+matrix-sdk = { version = "0.16.0", features = ["sso-login", "experimental-search"] }
+matrix-sdk-ui = "0.16.0"
+screen_macro = { path = "macros/screen_macro" }
+thiserror = "2.0.18"
 
 [features]
-debug = ["iced/hot"]
+debug = ["iced/hot", "iced/time-travel"]
