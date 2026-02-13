@@ -21,7 +21,6 @@ pub struct App {
 #[derive(Debug, Clone)]
 pub enum Message {
     WindowClosed(window::Id),
-    MatrixClientDropped,
     MatrixClientBuilt(Client),
     Authenticate { email: String, password: String },
     Authenticated,
@@ -115,7 +114,6 @@ impl App {
 
                 Task::batch(tasks)
             }
-            Message::MatrixClientDropped => Task::none(),
         }
     }
 
