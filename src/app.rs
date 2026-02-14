@@ -124,7 +124,7 @@ impl App {
 
     pub fn view(&self, _: window::Id) -> iced::Element<'_, Message> {
         match &self.screen {
-            Screen::Auth(auth) => auth.view(&self.error).map(Message::Auth),
+            Screen::Auth(auth) => auth.view(self.error()).map(Message::Auth),
             Screen::Chat => center(text("Você autenticado pabens")).into(),
         }
     }
@@ -159,6 +159,10 @@ impl App {
                 .chain(Task::done(Message::Authenticate { username, password })),
             },
         }
+    }
+
+    fn error(&self) -> Option<&AppError> {
+        (*self.error).as_ref()
     }
 }
 

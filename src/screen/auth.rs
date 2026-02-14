@@ -64,7 +64,7 @@ impl State {
         }
     }
 
-    pub fn view(&self, error: &Option<AppError>) -> Element<'_, Message> {
+    pub fn view(&self, error: Option<&AppError>) -> Element<'_, Message> {
         let username_input =
             text_input("E-email", &self.username).on_input(Message::UsernameChanged);
 
