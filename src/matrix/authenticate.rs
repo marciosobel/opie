@@ -12,12 +12,13 @@ pub async fn authenticate(
     username: String,
     password: String,
 ) -> Result<(), matrix_sdk::Error> {
-    if restore_session(&client).await? {
-        return Ok(());
+    match restore_session(&client).await? {
+        RestoreStatus::Restored => {}
+        RestoreStatus::NoSession => {
+            login(&client, username, password).await?;
+            save_session(&client).await?;
+        }
     }
-
-    login(&client, username, password).await?;
-    save_session(&client).await?;
 
     Ok(())
 }
@@ -36,20 +37,25 @@ pub async fn login(
     Ok(())
 }
 
-/// Restores a session from disk if it exists, returning:
-/// * `Ok(true)` if a session was successfully restored.
-/// * `Ok(false)` if no session was found on disk.
-/// * `Err` if an error occurred while reading the session file or restoring the session.
-pub async fn restore_session(client: &Client) -> Result<bool, matrix_sdk::Error> {
-    let session_path = session_file();
-    let result = std::fs::read_to_string(&session_path);
+pub enum RestoreStatus {
+    Restored,
+    NoSession,
+}
 
-    if let Ok(serialized_session) = result.as_ref() {
-        let session: MatrixSession = serde_json::from_str(serialized_session)?;
-        client.restore_session(session).await?;
+/// Restores a session from disk if it exists. Will not error if no session is found, as this is
+/// expected for first-time users.
+pub async fn restore_session(client: &Client) -> Result<RestoreStatus, matrix_sdk::Error> {
+    let session_path = session_file();
+    if !session_path.exists() {
+        // No session file found, likely because the user has not logged in before.
+        return Ok(RestoreStatus::NoSession);
     }
 
-    Ok(result.is_ok())
+    let serialized_session = std::fs::read_to_string(&session_path)?;
+    let session: MatrixSession = serde_json::from_str(&serialized_session)?;
+    client.restore_session(session).await?;
+
+    Ok(RestoreStatus::Restored)
 }
 
 /// Stores the current session to disk for future use. If no session exists, this is a no-op.
