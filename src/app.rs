@@ -20,6 +20,7 @@ pub struct App {
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    WindowOpened(window::Id),
     WindowClosed(window::Id),
     MatrixClientBuilt(Client),
     Authenticate { username: String, password: String },
@@ -40,17 +41,22 @@ enum Instruction {
 
 impl App {
     pub fn new() -> (Self, Task<Message>) {
+        let (_, open) = window::open(window::Settings {
+            position: window::Position::Centered,
+            ..Default::default()
+        });
+
         (
             Self {
                 client: None,
                 screen: Screen::Auth(auth::State::new()),
                 error: Arc::new(None),
             },
-            focus_next(),
+            open.map(Message::WindowOpened),
         )
     }
 
-    pub fn theme(&self) -> iced::theme::Theme {
+    pub fn theme(&self, _: window::Id) -> iced::theme::Theme {
         iced::theme::Theme::KanagawaDragon
     }
 
@@ -95,6 +101,7 @@ impl App {
                     },
                 )
             }
+            Message::WindowOpened(_) => focus_next(),
             Message::WindowClosed(_) => {
                 let mut tasks = vec![];
 
@@ -102,7 +109,7 @@ impl App {
                 let client = self.client.take();
 
                 // gracefully shutdown the matrix client.
-                // since it needs to be in a tokio runtime context,
+                // since it needs to be in an async runtime context,
                 // we create a task that simply calls the `drop` function.
                 if let Some(client) = client {
                     let task = Task::future(async move {
@@ -113,12 +120,12 @@ impl App {
                     tasks.push(task);
                 }
 
-                Task::batch(tasks)
+                Task::batch(tasks).chain(iced::exit())
             }
         }
     }
 
-    pub fn view(&self) -> iced::Element<'_, Message> {
+    pub fn view(&self, _: window::Id) -> iced::Element<'_, Message> {
         match &self.screen {
             Screen::Auth(auth) => auth.view(&self.error).map(Message::Auth),
             Screen::Chat => center(text("Você autenticado pabens")).into(),

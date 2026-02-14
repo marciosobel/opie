@@ -1,8 +1,8 @@
 use opie::App;
 
 fn main() -> iced::Result {
-    iced::application(App::new, App::update, App::view)
+    iced::daemon(App::new, App::update, App::view)
+        .subscription(App::subscription)
         .theme(App::theme)
-        .centered()
         .run()
 }
