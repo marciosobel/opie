@@ -39,8 +39,7 @@ pub async fn init_client(server: String) -> Result<Client, ClientBuildError> {
         .with_threading_support(threading_support)
         .with_enable_share_history_on_invite(true);
 
-    let client = client_builder.build().await;
-    client
+    client_builder.build().await
 }
 
 /// Returns the path where session specific data should be stored. Platform agnostic.

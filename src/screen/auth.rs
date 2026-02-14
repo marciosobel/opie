@@ -7,7 +7,7 @@ use crate::{Action, app::AppError};
 
 #[derive(Debug, Clone)]
 pub struct State {
-    email: String,
+    username: String,
     password: String,
     server: String,
 }
@@ -16,14 +16,14 @@ pub struct State {
 pub enum Instruction {
     Authenticate {
         server: String,
-        email: String,
+        username: String,
         password: String,
     },
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    EmailChanged(String),
+    UsernameChanged(String),
     PasswordChanged(String),
     ServerChanged(String),
     Auth,
@@ -32,7 +32,7 @@ pub enum Message {
 impl State {
     pub fn new() -> Self {
         Self {
-            email: String::new(),
+            username: String::new(),
             password: String::new(),
             server: String::from("matrix.org"),
         }
@@ -40,8 +40,8 @@ impl State {
 
     pub fn update(&mut self, message: Message) -> Action<Instruction, Message> {
         match message {
-            Message::EmailChanged(email) => {
-                self.email = email;
+            Message::UsernameChanged(username) => {
+                self.username = username;
                 Action::none()
             }
             Message::PasswordChanged(password) => {
@@ -55,7 +55,7 @@ impl State {
             Message::Auth => {
                 let instruction = Instruction::Authenticate {
                     server: self.server.clone(),
-                    email: self.email.clone(),
+                    username: self.username.clone(),
                     password: self.password.clone(),
                 };
 
@@ -65,7 +65,8 @@ impl State {
     }
 
     pub fn view(&self, error: &Option<AppError>) -> Element<'_, Message> {
-        let email_input = text_input("E-email", &self.email).on_input(Message::EmailChanged);
+        let username_input =
+            text_input("E-email", &self.username).on_input(Message::UsernameChanged);
 
         let provider_input = text_input("Provider", &self.server).on_input(Message::ServerChanged);
 
@@ -75,7 +76,7 @@ impl State {
 
         let mut content = column![
             text("OPIE").size(30),
-            email_input,
+            username_input,
             password_input,
             provider_input,
             button("Login").on_press(Message::Auth)

@@ -22,7 +22,7 @@ pub struct App {
 pub enum Message {
     WindowClosed(window::Id),
     MatrixClientBuilt(Client),
-    Authenticate { email: String, password: String },
+    Authenticate { username: String, password: String },
     Authenticated,
     Error(AppError),
     Auth(auth::Message),
@@ -72,13 +72,14 @@ impl App {
             }
             Message::Error(app_error) => {
                 eprintln!("Error: {:?}", app_error);
+                self.error = Arc::new(Some(app_error));
                 Task::none()
             }
             Message::Authenticated => {
                 self.screen = Screen::Chat;
                 Task::none()
             }
-            Message::Authenticate { email, password } => {
+            Message::Authenticate { username, password } => {
                 let Some(client) = &self.client else {
                     return Task::none();
                 };
@@ -86,7 +87,7 @@ impl App {
                 Task::perform(
                     client
                         .matrix_auth()
-                        .login_username(&email, &password)
+                        .login_username(&username, &password)
                         .into_future(),
                     |result| match result {
                         Ok(_) => Message::Authenticated,
@@ -145,13 +146,13 @@ impl App {
             Instruction::Auth(instruction) => match instruction {
                 auth::Instruction::Authenticate {
                     server,
-                    email,
+                    username,
                     password,
                 } => Task::perform(matrix::init_client(server), move |result| match result {
                     Err(error) => Message::Error(Arc::new(error).into()),
                     Ok(client) => Message::MatrixClientBuilt(client),
                 })
-                .chain(Task::done(Message::Authenticate { email, password })),
+                .chain(Task::done(Message::Authenticate { username, password })),
             },
         }
     }
