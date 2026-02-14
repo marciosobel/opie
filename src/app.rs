@@ -91,10 +91,7 @@ impl App {
                 };
 
                 Task::perform(
-                    client
-                        .matrix_auth()
-                        .login_username(&username, &password)
-                        .into_future(),
+                    matrix::authenticate(client.clone(), username, password),
                     |result| match result {
                         Ok(_) => Message::Authenticated,
                         Err(error) => Message::Error(Arc::new(error).into()),

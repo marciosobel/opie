@@ -4343,6 +4343,7 @@ dependencies = [
  "matrix-sdk",
  "matrix-sdk-ui",
  "screen_macro",
+ "serde_json",
  "thiserror 2.0.18",
 ]
 

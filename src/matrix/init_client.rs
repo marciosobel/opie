@@ -1,11 +1,11 @@
-use std::path::PathBuf;
-
 use anyhow::Result;
 use matrix_sdk::{
     Client, ClientBuildError, SqliteCryptoStore, SqliteEventCacheStore, SqliteStateStore,
     ThreadingSupport, encryption::EncryptionSettings, search_index::SearchIndexStoreKind,
     store::StoreConfig,
 };
+
+use crate::matrix::get_session_path;
 
 /// Creates and initializes the Matrix SDK client
 ///
@@ -40,16 +40,4 @@ pub async fn init_client(server: String) -> Result<Client, ClientBuildError> {
         .with_enable_share_history_on_invite(true);
 
     client_builder.build().await
-}
-
-/// Returns the path where session specific data should be stored. Platform agnostic.
-#[inline]
-fn get_session_path() -> PathBuf {
-    #[cfg(target_os = "windows")]
-    return dirs::data_local_dir()
-        .expect("Failed to get %localappdata%")
-        .join("/opie/");
-
-    #[cfg(not(target_os = "windows"))]
-    return "/tmp/opie/".into();
 }
