@@ -9,7 +9,7 @@ use std::path::PathBuf;
 /// | Linux    | `/tmp/opie/`           |
 /// | macOS    | `/tmp/opie/`           |
 /// | Windows  | `%localappdata%\opie\` |
-pub fn get_session_path() -> PathBuf {
+pub fn session_path() -> PathBuf {
     #[cfg(target_os = "windows")]
     return dirs::data_local_dir()
         .expect("Failed to get %localappdata%")

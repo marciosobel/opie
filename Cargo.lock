@@ -3291,6 +3291,7 @@ version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b33f9bc45edd7f8e25161521fdd30654da5c55e6749be6afa1aa9d6cf838ace0"
 dependencies = [
+ "anyhow",
  "anymap2",
  "aquamarine",
  "as_variant",
@@ -4343,8 +4344,10 @@ dependencies = [
  "matrix-sdk",
  "matrix-sdk-ui",
  "screen_macro",
+ "serde",
  "serde_json",
  "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]

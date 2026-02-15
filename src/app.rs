@@ -9,20 +9,23 @@ use matrix_sdk::{Client, ClientBuildError};
 use screen_macro::screen;
 use thiserror::Error;
 
-use crate::{Action, matrix, screen::auth};
+use crate::{Action, Settings, async_dropper::AsyncDropper, matrix, screen::auth};
 
 pub struct App {
     /// Reference to the main SDK client.
-    client: Option<Client>,
+    client: Option<AsyncDropper<Client>>,
     error: Arc<Option<AppError>>,
     screen: Screen,
+    settings: Settings,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
     WindowOpened(window::Id),
     WindowClosed(window::Id),
-    MatrixClientBuilt(Client),
+    MatrixClientBuilt(AsyncDropper<Client>),
+    RestoreSession,
+    SaveMatrixServer(String),
     Authenticate { username: String, password: String },
     Authenticated,
     Error(AppError),
@@ -41,18 +44,28 @@ enum Instruction {
 
 impl App {
     pub fn new() -> (Self, Task<Message>) {
+        let mut tasks = vec![];
+
         let (_, open) = window::open(window::Settings {
             position: window::Position::Centered,
             ..Default::default()
         });
+        tasks.push(open.map(Message::WindowOpened));
+
+        let settings = Settings::load().expect("Failed to load settings");
+
+        if let Some(server) = settings.server() {
+            tasks.push(restore_session(server));
+        }
 
         (
             Self {
                 client: None,
                 screen: Screen::Auth(auth::State::new()),
                 error: Arc::new(None),
+                settings,
             },
-            open.map(Message::WindowOpened),
+            Task::batch(tasks),
         )
     }
 
@@ -66,6 +79,29 @@ impl App {
                 self.client = Some(client);
                 Task::none()
             }
+            Message::RestoreSession => {
+                let Some(client) = self.client.clone() else {
+                    return Task::none();
+                };
+
+                Task::future(matrix::restore_session(client)).then(|result| match result {
+                    Ok(status) => match status {
+                        matrix::RestoreStatus::Restored => Task::done(Message::Authenticated),
+                        matrix::RestoreStatus::NoSession => Task::none(),
+                    },
+                    Err(error) => {
+                        let error = AppError::MatrixError(Arc::new(error.into()));
+                        Task::done(Message::Error(error))
+                    }
+                })
+            }
+            Message::SaveMatrixServer(server) => match self.settings.set_server(server).save() {
+                Ok(_) => Task::none(),
+                Err(error) => {
+                    let error = AppError::SettingsSaveError(Arc::new(error.into()));
+                    Task::done(Message::Error(error))
+                }
+            },
             Message::Auth(message) => {
                 let auth = screen!(self, Screen::Auth);
 
@@ -86,38 +122,26 @@ impl App {
                 Task::none()
             }
             Message::Authenticate { username, password } => {
-                let Some(client) = &self.client else {
+                let Some(client) = self.client.clone() else {
                     return Task::none();
                 };
 
-                Task::perform(
-                    matrix::authenticate(client.clone(), username, password),
-                    |result| match result {
+                Task::perform(matrix::authenticate(client, username, password), |result| {
+                    match result {
                         Ok(_) => Message::Authenticated,
                         Err(error) => Message::Error(Arc::new(error).into()),
-                    },
-                )
+                    }
+                })
             }
             Message::WindowOpened(_) => focus_next(),
             Message::WindowClosed(_) => {
-                let mut tasks = vec![];
+                let Some(client) = self.client.take() else {
+                    return iced::exit();
+                };
 
-                // since the app is closing, we can take the client off of our state
-                let client = self.client.take();
-
-                // gracefully shutdown the matrix client.
-                // since it needs to be in an async runtime context,
-                // we create a task that simply calls the `drop` function.
-                if let Some(client) = client {
-                    let task = Task::future(async move {
-                        drop(client);
-                    })
-                    .discard();
-
-                    tasks.push(task);
-                }
-
-                Task::batch(tasks).chain(iced::exit())
+                Task::future(async move { client })
+                    .discard()
+                    .chain(iced::exit())
             }
         }
     }
@@ -152,23 +176,23 @@ impl App {
                     server,
                     username,
                     password,
-                } => Task::perform(matrix::init_client(server), move |result| match result {
-                    Err(error) => Message::Error(Arc::new(error).into()),
-                    Ok(client) => Message::MatrixClientBuilt(client),
-                })
-                .chain(Task::done(Message::Authenticate { username, password })),
+                } => Task::perform(
+                    matrix::init_client(server.clone()),
+                    move |result| match result {
+                        Err(error) => Message::Error(Arc::new(error).into()),
+                        Ok(client) => Message::MatrixClientBuilt(AsyncDropper::new(client)),
+                    },
+                )
+                .chain(Task::batch([
+                    Task::done(Message::Authenticate { username, password }),
+                    Task::done(Message::SaveMatrixServer(server)),
+                ])),
             },
         }
     }
 
     fn error(&self) -> Option<&AppError> {
         (*self.error).as_ref()
-    }
-}
-
-fn handle_event(event: event::Event, _: event::Status, _: iced::window::Id) -> Option<Message> {
-    match event {
-        _ => None,
     }
 }
 
@@ -179,4 +203,29 @@ pub enum AppError {
 
     #[error("Error from the matrix client: {0:?}")]
     MatrixError(#[from] Arc<matrix_sdk::Error>),
+
+    #[error("Failed to save settings: {0:?}")]
+    SettingsSaveError(#[from] Arc<anyhow::Error>),
+}
+
+fn handle_event(event: event::Event, _: event::Status, _: iced::window::Id) -> Option<Message> {
+    match event {
+        _ => None,
+    }
+}
+
+fn restore_session(server: String) -> Task<Message> {
+    let create_client_task =
+        Task::future(matrix::init_client(server)).then(move |result| match result {
+            Err(error) => Task::done(Message::Error(Arc::new(error).into())),
+            Ok(client) => {
+                let create_client =
+                    Task::done(Message::MatrixClientBuilt(AsyncDropper::new(client)));
+                let restore_session = Task::done(Message::RestoreSession);
+
+                create_client.chain(restore_session)
+            }
+        });
+
+    create_client_task
 }

@@ -5,13 +5,13 @@ use matrix_sdk::{
     store::StoreConfig,
 };
 
-use crate::matrix::get_session_path;
+use crate::matrix::session_path;
 
 /// Creates and initializes the Matrix SDK client
 ///
 /// * `server` - The server name or the homeserver url to connect to
 pub async fn init_client(server: String) -> Result<Client, ClientBuildError> {
-    let session_path = get_session_path();
+    let session_path = session_path();
     let store_config = StoreConfig::new("opie".to_owned())
         .crypto_store(SqliteCryptoStore::open(session_path.join("crypto"), None).await?)
         .state_store(SqliteStateStore::open(session_path.join("state"), None).await?)

@@ -4,5 +4,5 @@ pub use init_client::*;
 mod authenticate;
 pub use authenticate::*;
 
-mod get_session_path;
-pub(self) use get_session_path::*;
+mod session_path;
+pub(self) use session_path::*;
