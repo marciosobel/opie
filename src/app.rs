@@ -1,15 +1,16 @@
 use std::sync::Arc;
 
-use iced::{
-    Subscription, Task, event,
-    widget::{center, operation::focus_next, text},
-    window,
-};
+use iced::{Subscription, Task, event, widget::operation::focus_next, window};
 use matrix_sdk::{Client, ClientBuildError};
 use screen_macro::screen;
 use thiserror::Error;
 
-use crate::{Action, Settings, async_dropper::AsyncDropper, matrix, screen::auth};
+use crate::{
+    Action, Settings,
+    async_dropper::AsyncDropper,
+    matrix,
+    screen::{auth, main},
+};
 
 pub struct App {
     /// Reference to the main SDK client.
@@ -21,25 +22,39 @@ pub struct App {
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    /// Window has opened
     WindowOpened(window::Id),
+    /// Window has closed
     WindowClosed(window::Id),
+    /// The matrix client has been built and is ready to use
     MatrixClientBuilt(AsyncDropper<Client>),
+    /// Attempt to restore a session from disk
     RestoreSession,
+    /// Store the matrix server provider in the settings
     SaveMatrixServer(String),
+    /// Attempt to authenticate
     Authenticate { username: String, password: String },
+    /// User authenticated
     Authenticated,
+    /// An error that occurred in the app
     Error(AppError),
+
+    //Screen messages
+    /// Messages from the authentication screen
     Auth(auth::Message),
+    /// Messages from the main screen
+    Main(main::Message),
 }
 
 pub enum Screen {
     Auth(auth::State),
-    Chat,
+    Main(main::State),
 }
 
 #[derive(Debug, Clone)]
 enum Instruction {
     Auth(auth::Instruction),
+    Main(main::Instruction),
 }
 
 impl App {
@@ -102,23 +117,18 @@ impl App {
                     Task::done(Message::Error(error))
                 }
             },
-            Message::Auth(message) => {
-                let auth = screen!(self, Screen::Auth);
-
-                let action = auth
-                    .update(message)
-                    .map(Message::Auth)
-                    .map_instruction(Instruction::Auth);
-
-                self.handle_action(action)
-            }
             Message::Error(app_error) => {
                 eprintln!("Error: {:?}", app_error);
                 self.error = Arc::new(Some(app_error));
                 Task::none()
             }
             Message::Authenticated => {
-                self.screen = Screen::Chat;
+                let Some(client) = self.client.clone() else {
+                    eprintln!("Authentication complete but no client found");
+                    return Task::none();
+                };
+
+                self.screen = Screen::Main(main::State::new(client));
                 Task::none()
             }
             Message::Authenticate { username, password } => {
@@ -143,13 +153,34 @@ impl App {
                     .discard()
                     .chain(iced::exit())
             }
+
+            // Screen messages
+            Message::Auth(message) => {
+                let screen = screen!(self, Screen::Auth);
+
+                let action = screen
+                    .update(message)
+                    .map(Message::Auth)
+                    .map_instruction(Instruction::Auth);
+
+                self.handle_action(action)
+            }
+            Message::Main(message) => {
+                let screen = screen!(self, Screen::Main);
+                let action = screen
+                    .update(message)
+                    .map(Message::Main)
+                    .map_instruction(Instruction::Main);
+
+                self.handle_action(action)
+            }
         }
     }
 
     pub fn view(&self, _: window::Id) -> iced::Element<'_, Message> {
         match &self.screen {
-            Screen::Auth(auth) => auth.view(self.error()).map(Message::Auth),
-            Screen::Chat => center(text("Você autenticado pabens")).into(),
+            Screen::Auth(screen) => screen.view(self.error()).map(Message::Auth),
+            Screen::Main(screen) => screen.view().map(Message::Main),
         }
     }
 
@@ -188,6 +219,7 @@ impl App {
                     Task::done(Message::SaveMatrixServer(server)),
                 ])),
             },
+            Instruction::Main(instruction) => match instruction {},
         }
     }
 
