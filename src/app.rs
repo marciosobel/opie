@@ -1,24 +1,25 @@
 use std::sync::Arc;
 
 use iced::{
-    Subscription, Task, event,
-    widget::{center, operation::focus_next, text},
+    Alignment, Subscription, Task, event,
+    futures::SinkExt,
+    widget::{center, column, operation::focus_next, text},
     window,
 };
-use matrix_sdk::{Client, ClientBuildError};
 use screen_macro::screen;
 use thiserror::Error;
 
 use crate::{
     Action, Settings,
-    async_dropper::AsyncDropper,
-    matrix,
+    matrix::{
+        self,
+        bridge::{Action as MatrixAction, MatrixBridgeSender},
+    },
     screen::{auth, main},
 };
 
 pub struct App {
-    /// Reference to the main SDK client.
-    client: Option<AsyncDropper<Client>>,
+    bridge: Option<MatrixBridgeSender>,
     error: Arc<Option<AppError>>,
     screen: Screen,
     settings: Settings,
@@ -30,22 +31,12 @@ pub enum Message {
     WindowOpened(window::Id),
     /// Window has closed
     WindowClosed(window::Id),
-    /// The matrix client has been built and is ready to use
-    MatrixClientBuilt(AsyncDropper<Client>),
-    /// Attempt to restore a session from disk
-    RestoreSession,
-    /// Failed to restore a session from disk
-    RestoreSessionFailed(AppError),
-    /// Store the matrix server provider in the settings
-    SaveMatrixServer(String),
-    /// Attempt to authenticate
-    Authenticate { username: String, password: String },
-    /// User authenticated
-    Authenticated,
+    /// A matrix event.
+    MatrixEvent(matrix::bridge::Event),
     /// An error that occurred in the app
     Error(AppError),
 
-    //Screen messages
+    // Screen messages
     /// Messages from the authentication screen
     Auth(auth::Message),
     /// Messages from the main screen
@@ -55,7 +46,7 @@ pub enum Message {
 pub enum Screen {
     Auth(auth::State),
     Main(main::State),
-    Loading,
+    Loading(String),
 }
 
 #[derive(Debug, Clone)]
@@ -76,14 +67,10 @@ impl App {
 
         let settings = Settings::load().expect("Failed to load settings");
 
-        if let Some(server) = settings.server() {
-            tasks.push(restore_session(server));
-        }
-
         (
             Self {
-                client: None,
-                screen: Screen::Loading,
+                bridge: None,
+                screen: Screen::Loading("Initializing app...".to_string()),
                 error: Arc::new(None),
                 settings,
             },
@@ -97,78 +84,14 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::MatrixClientBuilt(client) => {
-                self.client = Some(client);
-                Task::none()
-            }
-            Message::RestoreSession => {
-                let Some(client) = self.client.clone() else {
-                    return Task::none();
-                };
-
-                Task::future(matrix::restore_session(client)).then(|result| match result {
-                    Ok(status) => match status {
-                        matrix::RestoreStatus::Restored => Task::done(Message::Authenticated),
-                        matrix::RestoreStatus::NoSession => {
-                            let error = AppError::MatrixSessionRestoreNotFound;
-                            Task::done(Message::RestoreSessionFailed(error))
-                        }
-                    },
-                    Err(error) => {
-                        let error = AppError::MatrixError(Arc::new(error.into()));
-                        Task::done(Message::Error(error))
-                    }
-                })
-            }
-            Message::RestoreSessionFailed(error) => {
-                eprintln!("Failed to restore session: {:?}", error);
-                self.screen = Screen::Auth(auth::State::new());
-                self.error = Arc::new(Some(error));
-                Task::none()
-            }
-            Message::SaveMatrixServer(server) => match self.settings.set_server(server).save() {
-                Ok(_) => Task::none(),
-                Err(error) => {
-                    let error = AppError::SettingsSaveError(Arc::new(error.into()));
-                    Task::done(Message::Error(error))
-                }
-            },
             Message::Error(app_error) => {
                 eprintln!("Error: {:?}", app_error);
                 self.error = Arc::new(Some(app_error));
                 Task::none()
             }
-            Message::Authenticated => {
-                let Some(client) = self.client.clone() else {
-                    eprintln!("Authentication complete but no client found");
-                    return Task::none();
-                };
-
-                self.screen = Screen::Main(main::State::new(client));
-                Task::none()
-            }
-            Message::Authenticate { username, password } => {
-                let Some(client) = self.client.clone() else {
-                    return Task::none();
-                };
-
-                Task::perform(matrix::authenticate(client, username, password), |result| {
-                    match result {
-                        Ok(_) => Message::Authenticated,
-                        Err(error) => Message::Error(Arc::new(error).into()),
-                    }
-                })
-            }
             Message::WindowOpened(_) => focus_next(),
-            Message::WindowClosed(_) => {
-                let Some(client) = self.client.take() else {
-                    return iced::exit();
-                };
-
-                Task::future(async move { client })
-                    .discard()
-                    .chain(iced::exit())
-            }
+            Message::WindowClosed(_) => iced::exit(),
+            Message::MatrixEvent(event) => self.handle_matrix_event(event),
 
             // Screen messages
             Message::Auth(message) => {
@@ -197,7 +120,12 @@ impl App {
         match &self.screen {
             Screen::Auth(screen) => screen.view(self.error()).map(Message::Auth),
             Screen::Main(screen) => screen.view().map(Message::Main),
-            Screen::Loading => center(text("Loading...")).into(),
+            Screen::Loading(msg) => center(
+                column![text("Loading...").size(24), text(msg)]
+                    .spacing(10)
+                    .align_x(Alignment::Center),
+            )
+            .into(),
         }
     }
 
@@ -205,6 +133,7 @@ impl App {
         Subscription::batch([
             event::listen_with(handle_event),
             window::close_events().map(Message::WindowClosed),
+            matrix::bridge::subscribe().map(Message::MatrixEvent),
         ])
     }
 
@@ -224,17 +153,17 @@ impl App {
                     server,
                     username,
                     password,
-                } => Task::perform(
-                    matrix::init_client(server.clone()),
-                    move |result| match result {
-                        Err(error) => Message::Error(Arc::new(error).into()),
-                        Ok(client) => Message::MatrixClientBuilt(AsyncDropper::new(client)),
-                    },
-                )
-                .chain(Task::batch([
-                    Task::done(Message::Authenticate { username, password }),
-                    Task::done(Message::SaveMatrixServer(server)),
-                ])),
+                } => {
+                    let Some(bridge) = &mut self.bridge else {
+                        eprintln!("No bridge available to authenticate");
+                        return Task::none();
+                    };
+
+                    _ = bridge.send(MatrixAction::CreateMatrixClient { server });
+                    _ = bridge.send(MatrixAction::Authenticate { username, password });
+
+                    Task::none()
+                }
             },
             Instruction::Main(instruction) => match instruction {},
         }
@@ -243,15 +172,58 @@ impl App {
     fn error(&self) -> Option<&AppError> {
         (*self.error).as_ref()
     }
+
+    fn handle_matrix_event(&mut self, event: matrix::bridge::Event) -> Task<Message> {
+        match event {
+            matrix::bridge::Event::Stale(mut bridge) => {
+                self.bridge = Some(bridge.clone());
+
+                self.screen = Screen::Loading("Checking session...".to_string());
+                let Some(server) = self.settings.server() else {
+                    println!("No server found in settings, showing auth screen");
+                    self.screen = Screen::Auth(auth::State::new());
+                    return Task::none();
+                };
+
+                self.screen = Screen::Loading("Creating matrix client...".to_string());
+                _ = bridge
+                    .try_send(MatrixAction::CreateMatrixClient { server })
+                    .unwrap();
+
+                _ = bridge.try_send(MatrixAction::RestoreSession).unwrap();
+                Task::none()
+            }
+            matrix::bridge::Event::Error(error) => {
+                eprintln!("Received error event from matrix bridge: {:?}", error);
+                Task::done(Message::Error(error.into()))
+            }
+            matrix::bridge::Event::Authenticated => {
+                let Some(bridge) = self.bridge.clone() else {
+                    eprintln!("Received Authenticated event without a bridge");
+                    return Task::none();
+                };
+
+                let state = main::State::new(bridge);
+                self.screen = Screen::Main(state);
+                Task::none()
+            }
+            matrix::bridge::Event::SessionRestoreFailed => {
+                let state = auth::State::new();
+                self.screen = Screen::Auth(state);
+                Task::none()
+            }
+            matrix::bridge::Event::Ready => {
+                println!("Bridge created successfully");
+                Task::none()
+            }
+        }
+    }
 }
 
 #[derive(Error, Debug, Clone)]
 pub enum AppError {
-    #[error("Failed to build matrix client")]
-    MatrixClientBuildError(#[from] Arc<ClientBuildError>),
-
-    #[error("Error from the matrix client")]
-    MatrixError(#[from] Arc<matrix_sdk::Error>),
+    #[error("Matrix bridge error: {0}")]
+    MatrixBridgeError(#[from] matrix::bridge::Error),
 
     #[error("Failed to save settings")]
     SettingsSaveError(#[from] Arc<anyhow::Error>),
@@ -264,19 +236,4 @@ fn handle_event(event: event::Event, _: event::Status, _: iced::window::Id) -> O
     match event {
         _ => None,
     }
-}
-
-fn restore_session(server: String) -> Task<Message> {
-    Task::future(matrix::init_client(server)).then(move |result| match result {
-        Err(error) => {
-            let error = Arc::new(error).into();
-            Task::done(Message::RestoreSessionFailed(error))
-        }
-        Ok(client) => {
-            let create_client = Task::done(Message::MatrixClientBuilt(AsyncDropper::new(client)));
-            let restore_session = Task::done(Message::RestoreSession);
-
-            create_client.chain(restore_session)
-        }
-    })
 }

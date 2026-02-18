@@ -2,12 +2,11 @@ use iced::{
     Element,
     widget::{center, text},
 };
-use matrix_sdk::Client;
 
-use crate::{Action, async_dropper::AsyncDropper};
+use crate::{Action, matrix::bridge::MatrixBridgeSender as MatrixBridge};
 
 pub struct State {
-    client: AsyncDropper<Client>,
+    bridge: MatrixBridge,
 }
 
 #[derive(Debug, Clone)]
@@ -17,8 +16,8 @@ pub enum Message {}
 pub enum Instruction {}
 
 impl State {
-    pub fn new(client: AsyncDropper<Client>) -> Self {
-        Self { client }
+    pub fn new(bridge: MatrixBridge) -> Self {
+        Self { bridge }
     }
 
     pub fn update(&mut self, _message: Message) -> Action<Instruction, Message> {

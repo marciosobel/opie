@@ -5,17 +5,20 @@ use matrix_sdk::{
     store::StoreConfig,
 };
 
-use crate::matrix::session_path;
-
 /// Creates and initializes the Matrix SDK client
 ///
 /// * `server` - The server name or the homeserver url to connect to
-pub async fn init_client(server: String) -> Result<Client, ClientBuildError> {
-    let session_path = session_path();
+pub async fn new_client(server_name: String) -> Result<Client, ClientBuildError> {
+    let session_path = super::session_path();
+
+    let state_store = SqliteStateStore::open(session_path.join("state"), None).await?;
+    let crypto_store = SqliteCryptoStore::open(session_path.join("crypto"), None).await?;
+    let cache_store = SqliteEventCacheStore::open(session_path.join("cache"), None).await?;
+
     let store_config = StoreConfig::new("opie".to_owned())
-        .crypto_store(SqliteCryptoStore::open(session_path.join("crypto"), None).await?)
-        .state_store(SqliteStateStore::open(session_path.join("state"), None).await?)
-        .event_cache_store(SqliteEventCacheStore::open(session_path.join("cache"), None).await?);
+        .crypto_store(crypto_store)
+        .state_store(state_store)
+        .event_cache_store(cache_store);
 
     let search_index_store =
         SearchIndexStoreKind::UnencryptedDirectory(session_path.join("index_data"));
@@ -33,7 +36,7 @@ pub async fn init_client(server: String) -> Result<Client, ClientBuildError> {
 
     let client_builder = Client::builder()
         .store_config(store_config)
-        .server_name_or_homeserver_url(server)
+        .server_name_or_homeserver_url(server_name)
         .with_encryption_settings(encryption_settings)
         .search_index_store(search_index_store)
         .with_threading_support(threading_support)

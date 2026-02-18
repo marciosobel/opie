@@ -1,14 +1,14 @@
 use anyhow::Result;
 use matrix_sdk::{AuthSession, Client, authentication::matrix::MatrixSession};
 
-use crate::{async_dropper::AsyncDropper, matrix::session_path};
+use super::session_path;
 
 /// Authenticates the user with the Matrix server.
 ///
 /// Authentication will restore a session if it exists, or log in with provided credentials,
 /// saving the session for future use.
 pub async fn authenticate(
-    client: AsyncDropper<Client>,
+    client: Client,
     username: String,
     password: String,
 ) -> Result<(), matrix_sdk::Error> {
@@ -25,7 +25,7 @@ pub async fn authenticate(
 
 /// Logs in to the Matrix server with the provided username and password.
 pub async fn login(
-    client: AsyncDropper<Client>,
+    client: Client,
     username: String,
     password: String,
 ) -> Result<(), matrix_sdk::Error> {
@@ -44,9 +44,7 @@ pub enum RestoreStatus {
 
 /// Restores a session from disk if it exists. Will not error if no session is found, as this is
 /// expected for first-time users.
-pub async fn restore_session(
-    client: AsyncDropper<Client>,
-) -> Result<RestoreStatus, matrix_sdk::Error> {
+pub async fn restore_session(client: Client) -> Result<RestoreStatus, matrix_sdk::Error> {
     let session_path = session_file();
     if !session_path.exists() {
         // No session file found, likely because the user has not logged in before.
@@ -61,7 +59,7 @@ pub async fn restore_session(
 }
 
 /// Stores the current session to disk for future use. If no session exists, this is a no-op.
-pub async fn save_session(client: AsyncDropper<Client>) -> Result<(), matrix_sdk::Error> {
+pub async fn save_session(client: Client) -> Result<(), matrix_sdk::Error> {
     let Some(session) = client.session() else {
         // No session to save, likely because the user is not logged in.
         return Ok(());
