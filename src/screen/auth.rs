@@ -86,7 +86,7 @@ impl State {
         .max_width(300);
 
         if let Some(error) = error {
-            content = content.push(text!("Error: {:?}", error).style(text::danger));
+            content = content.push(text!("Error: {}", error).style(text::danger));
         }
 
         center(content).padding(20).into()

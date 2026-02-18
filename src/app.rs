@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use iced::{Subscription, Task, event, widget::operation::focus_next, window};
+use iced::{
+    Subscription, Task, event,
+    widget::{center, operation::focus_next, text},
+    window,
+};
 use matrix_sdk::{Client, ClientBuildError};
 use screen_macro::screen;
 use thiserror::Error;
@@ -30,6 +34,8 @@ pub enum Message {
     MatrixClientBuilt(AsyncDropper<Client>),
     /// Attempt to restore a session from disk
     RestoreSession,
+    /// Failed to restore a session from disk
+    RestoreSessionFailed(AppError),
     /// Store the matrix server provider in the settings
     SaveMatrixServer(String),
     /// Attempt to authenticate
@@ -49,6 +55,7 @@ pub enum Message {
 pub enum Screen {
     Auth(auth::State),
     Main(main::State),
+    Loading,
 }
 
 #[derive(Debug, Clone)]
@@ -76,7 +83,7 @@ impl App {
         (
             Self {
                 client: None,
-                screen: Screen::Auth(auth::State::new()),
+                screen: Screen::Loading,
                 error: Arc::new(None),
                 settings,
             },
@@ -102,13 +109,22 @@ impl App {
                 Task::future(matrix::restore_session(client)).then(|result| match result {
                     Ok(status) => match status {
                         matrix::RestoreStatus::Restored => Task::done(Message::Authenticated),
-                        matrix::RestoreStatus::NoSession => Task::none(),
+                        matrix::RestoreStatus::NoSession => {
+                            let error = AppError::MatrixSessionRestoreNotFound;
+                            Task::done(Message::RestoreSessionFailed(error))
+                        }
                     },
                     Err(error) => {
                         let error = AppError::MatrixError(Arc::new(error.into()));
                         Task::done(Message::Error(error))
                     }
                 })
+            }
+            Message::RestoreSessionFailed(error) => {
+                eprintln!("Failed to restore session: {:?}", error);
+                self.screen = Screen::Auth(auth::State::new());
+                self.error = Arc::new(Some(error));
+                Task::none()
             }
             Message::SaveMatrixServer(server) => match self.settings.set_server(server).save() {
                 Ok(_) => Task::none(),
@@ -181,6 +197,7 @@ impl App {
         match &self.screen {
             Screen::Auth(screen) => screen.view(self.error()).map(Message::Auth),
             Screen::Main(screen) => screen.view().map(Message::Main),
+            Screen::Loading => center(text("Loading...")).into(),
         }
     }
 
@@ -230,14 +247,17 @@ impl App {
 
 #[derive(Error, Debug, Clone)]
 pub enum AppError {
-    #[error("Failed to build matrix client: {0:?}")]
+    #[error("Failed to build matrix client")]
     MatrixClientBuildError(#[from] Arc<ClientBuildError>),
 
-    #[error("Error from the matrix client: {0:?}")]
+    #[error("Error from the matrix client")]
     MatrixError(#[from] Arc<matrix_sdk::Error>),
 
-    #[error("Failed to save settings: {0:?}")]
+    #[error("Failed to save settings")]
     SettingsSaveError(#[from] Arc<anyhow::Error>),
+
+    #[error("No session found to restore")]
+    MatrixSessionRestoreNotFound,
 }
 
 fn handle_event(event: event::Event, _: event::Status, _: iced::window::Id) -> Option<Message> {
@@ -247,17 +267,16 @@ fn handle_event(event: event::Event, _: event::Status, _: iced::window::Id) -> O
 }
 
 fn restore_session(server: String) -> Task<Message> {
-    let create_client_task =
-        Task::future(matrix::init_client(server)).then(move |result| match result {
-            Err(error) => Task::done(Message::Error(Arc::new(error).into())),
-            Ok(client) => {
-                let create_client =
-                    Task::done(Message::MatrixClientBuilt(AsyncDropper::new(client)));
-                let restore_session = Task::done(Message::RestoreSession);
+    Task::future(matrix::init_client(server)).then(move |result| match result {
+        Err(error) => {
+            let error = Arc::new(error).into();
+            Task::done(Message::RestoreSessionFailed(error))
+        }
+        Ok(client) => {
+            let create_client = Task::done(Message::MatrixClientBuilt(AsyncDropper::new(client)));
+            let restore_session = Task::done(Message::RestoreSession);
 
-                create_client.chain(restore_session)
-            }
-        });
-
-    create_client_task
+            create_client.chain(restore_session)
+        }
+    })
 }
