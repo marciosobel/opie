@@ -3,10 +3,10 @@ use iced::{
     widget::{center, text},
 };
 
-use crate::{Action, matrix::bridge::MatrixBridgeSender as MatrixBridge};
+use crate::{Action, matrix::bridge::MatrixBridgeSender};
 
 pub struct State {
-    bridge: MatrixBridge,
+    bridge: MatrixBridgeSender,
 }
 
 #[derive(Debug, Clone)]
@@ -16,7 +16,7 @@ pub enum Message {}
 pub enum Instruction {}
 
 impl State {
-    pub fn new(bridge: MatrixBridge) -> Self {
+    pub fn new(bridge: MatrixBridgeSender) -> Self {
         Self { bridge }
     }
 

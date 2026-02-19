@@ -1,7 +1,6 @@
-///! Source: https://github.com/airstrike/iced_receipts/blob/master/src/action.rs
-
-use iced::advanced::graphics::futures::MaybeSend;
 use iced::Task;
+///! Source: https://github.com/airstrike/iced_receipts/blob/master/src/action.rs
+use iced::advanced::graphics::futures::MaybeSend;
 use std::fmt;
 
 pub struct Action<I, Message> {

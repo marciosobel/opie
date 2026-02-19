@@ -85,7 +85,7 @@ impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Error(app_error) => {
-                eprintln!("Error: {:?}", app_error);
+                tracing::error!("Error: {:?}", app_error);
                 self.error = Arc::new(Some(app_error));
                 Task::none()
             }
@@ -147,6 +147,7 @@ impl App {
     }
 
     fn perform(&mut self, instruction: Instruction) -> Task<Message> {
+        tracing::info!("Performing instruction: {:?}", instruction);
         match instruction {
             Instruction::Auth(instruction) => match instruction {
                 auth::Instruction::Authenticate {
@@ -155,12 +156,15 @@ impl App {
                     password,
                 } => {
                     let Some(bridge) = &mut self.bridge else {
-                        eprintln!("No bridge available to authenticate");
+                        tracing::error!("No bridge available to authenticate");
                         return Task::none();
                     };
 
-                    _ = bridge.send(MatrixAction::CreateMatrixClient { server });
-                    _ = bridge.send(MatrixAction::Authenticate { username, password });
+                    tracing::info!(
+                        "Sending CreateMatrixClient and Authenticate actions to the bridge"
+                    );
+                    _ = bridge.try_send(MatrixAction::CreateMatrixClient { server });
+                    _ = bridge.try_send(MatrixAction::Authenticate { username, password });
 
                     Task::none()
                 }
@@ -177,43 +181,46 @@ impl App {
         match event {
             matrix::bridge::Event::Stale(mut bridge) => {
                 self.bridge = Some(bridge.clone());
+                tracing::info!("Matrix bridge stored in the app state");
 
                 self.screen = Screen::Loading("Checking session...".to_string());
                 let Some(server) = self.settings.server() else {
-                    println!("No server found in settings, showing auth screen");
+                    tracing::info!("No server found in settings, showing auth screen");
                     self.screen = Screen::Auth(auth::State::new());
                     return Task::none();
                 };
 
-                self.screen = Screen::Loading("Creating matrix client...".to_string());
-                _ = bridge
-                    .try_send(MatrixAction::CreateMatrixClient { server })
-                    .unwrap();
+                tracing::info!("Homeserver found in settings, trying to restore session");
 
-                _ = bridge.try_send(MatrixAction::RestoreSession).unwrap();
+                self.screen = Screen::Loading("Creating matrix client...".to_string());
+                _ = bridge.try_send(MatrixAction::CreateMatrixClient { server });
+                _ = bridge.try_send(MatrixAction::RestoreSession);
+
                 Task::none()
             }
             matrix::bridge::Event::Error(error) => {
-                eprintln!("Received error event from matrix bridge: {:?}", error);
+                tracing::error!("Received error event from matrix bridge: {:?}", error);
                 Task::done(Message::Error(error.into()))
             }
             matrix::bridge::Event::Authenticated => {
                 let Some(bridge) = self.bridge.clone() else {
-                    eprintln!("Received Authenticated event without a bridge");
+                    tracing::error!("Received Authenticated event without a bridge");
                     return Task::none();
                 };
 
+                tracing::info!("Authentication successful, showing the main screen");
                 let state = main::State::new(bridge);
                 self.screen = Screen::Main(state);
                 Task::none()
             }
             matrix::bridge::Event::SessionRestoreFailed => {
+                tracing::info!("Session restore failed, showing auth screen");
                 let state = auth::State::new();
                 self.screen = Screen::Auth(state);
                 Task::none()
             }
             matrix::bridge::Event::Ready => {
-                println!("Bridge created successfully");
+                tracing::info!("Bridge created successfully");
                 Task::none()
             }
         }

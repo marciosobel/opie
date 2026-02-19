@@ -12,10 +12,15 @@ pub async fn authenticate(
     username: String,
     password: String,
 ) -> Result<(), matrix_sdk::Error> {
+    tracing::info!("Restoring matrix session");
     match restore_session(client.clone()).await? {
-        RestoreStatus::Restored => {}
+        RestoreStatus::Restored => {
+            tracing::info!("Session restored successfully");
+        }
         RestoreStatus::NoSession => {
+            tracing::info!("No session found, logging in with credentials");
             login(client.clone(), username, password).await?;
+            tracing::info!("Saving session");
             save_session(client).await?;
         }
     }
@@ -47,12 +52,14 @@ pub enum RestoreStatus {
 pub async fn restore_session(client: Client) -> Result<RestoreStatus, matrix_sdk::Error> {
     let session_path = session_file();
     if !session_path.exists() {
+        tracing::info!("No session file found, returning");
         // No session file found, likely because the user has not logged in before.
         return Ok(RestoreStatus::NoSession);
     }
 
     let serialized_session = std::fs::read_to_string(&session_path)?;
     let session: MatrixSession = serde_json::from_str(&serialized_session)?;
+    tracing::info!("Session restored from file: {:?}", session);
     client.restore_session(session).await?;
 
     Ok(RestoreStatus::Restored)
@@ -61,7 +68,7 @@ pub async fn restore_session(client: Client) -> Result<RestoreStatus, matrix_sdk
 /// Stores the current session to disk for future use. If no session exists, this is a no-op.
 pub async fn save_session(client: Client) -> Result<(), matrix_sdk::Error> {
     let Some(session) = client.session() else {
-        // No session to save, likely because the user is not logged in.
+        tracing::info!("No session found, not saving");
         return Ok(());
     };
 

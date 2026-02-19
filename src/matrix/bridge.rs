@@ -31,6 +31,7 @@ pub enum Event {
 }
 
 /// Actions (or commands) that can be sent to the Matrix bridge.
+#[derive(Debug)]
 pub enum Action {
     /// Store the matrix server provider in the settings
     CreateMatrixClient { server: String },
@@ -103,22 +104,25 @@ pub enum Error {
 }
 
 async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
+    tracing::info!("Subscription handler started");
     let mut state = State::WaitingForServerName;
     let (sender, mut receiver) = mpsc::channel(CHANNEL_SIZE);
-    _ = emitter.send(Event::Stale(sender)).await;
+    send(Event::Stale(sender), &mut emitter).await;
 
     loop {
         let action = receiver.select_next_some().await;
+        tracing::info!("Received action: {:?}", action);
         match action {
             Action::CreateMatrixClient { server } => match &state {
-                State::WaitingForServerName => match Bridge::new(server).await {
-                    Ok(bridge) => {
-                        send(Event::Ready, &mut emitter).await;
-                        state = State::Initialized(bridge);
+                State::WaitingForServerName | State::Initialized(_) => {
+                    match Bridge::new(server).await {
+                        Ok(bridge) => {
+                            send(Event::Ready, &mut emitter).await;
+                            state = State::Initialized(bridge);
+                        }
+                        Err(error) => send(Event::Error(error), &mut emitter).await,
                     }
-                    Err(error) => send(Event::Error(error), &mut emitter).await,
-                },
-                _ => invalid_action(&mut emitter).await,
+                }
             },
 
             Action::Authenticate { username, password } => match &state {
@@ -147,13 +151,19 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
     }
 }
 
-/// Helper function to send an event to the emitter, ignoring any errors that occur.
+/// Helper function to send an event to the emitter.
 async fn send(event: Event, emitter: &mut mpsc::Sender<Event>) {
-    _ = emitter.send(event).await;
+    tracing::info!("Sending event: {:?}", event);
+    match emitter.send(event).await {
+        Ok(_) => (),
+        Err(error) => tracing::error!("Failed to send event: {:?}", error),
+    }
 }
 
+/// Helper function to send a invalid action event to the emitter.
 async fn invalid_action(emitter: &mut mpsc::Sender<Event>) {
-    _ = emitter.send(Event::Error(Error::InvalidAction)).await;
+    tracing::warn!("Received invalid action for current state");
+    send(Event::Error(Error::InvalidAction), emitter).await;
 }
 
 /// Creates an [`iced`] subscription for the matrix bridge.
