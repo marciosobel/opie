@@ -84,6 +84,11 @@ pub async fn save_session(client: Client) -> Result<(), matrix_sdk::Error> {
     Ok(())
 }
 
+/// Checks if the client is currently authenticated by verifying if a session exists.
+pub fn is_authenticated(client: &Client) -> bool {
+    client.access_token().is_some()
+}
+
 fn session_file() -> std::path::PathBuf {
     session_path().join("session.json")
 }

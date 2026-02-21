@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use iced::{
     Alignment, Subscription, Task, event,
-    futures::SinkExt,
     widget::{center, column, operation::focus_next, text},
     window,
 };
@@ -43,6 +42,7 @@ pub enum Message {
     Main(main::Message),
 }
 
+#[derive(Debug, Clone)]
 pub enum Screen {
     Auth(auth::State),
     Main(main::State),
@@ -178,6 +178,17 @@ impl App {
     }
 
     fn handle_matrix_event(&mut self, event: matrix::bridge::Event) -> Task<Message> {
+        match &mut self.screen {
+            Screen::Main(state) => {
+                let action = state
+                    .update(main::Message::MatrixEvent(event))
+                    .map(Message::Main)
+                    .map_instruction(Instruction::Main);
+                return self.handle_action(action);
+            }
+            _ => {}
+        }
+
         match event {
             matrix::bridge::Event::Stale(mut bridge) => {
                 self.bridge = Some(bridge.clone());
@@ -223,6 +234,7 @@ impl App {
                 tracing::info!("Bridge created successfully");
                 Task::none()
             }
+            matrix::bridge::Event::RoomList(_) => todo!(),
         }
     }
 }
