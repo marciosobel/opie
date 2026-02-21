@@ -3,7 +3,7 @@ use std::{pin::pin, sync::Arc};
 use iced::futures::StreamExt;
 use matrix_sdk_ui::{
     eyeball_im::Vector,
-    room_list_service::{RoomList, RoomListItem, filters::new_filter_non_left},
+    room_list_service::{RoomList, RoomListItem, filters},
 };
 
 pub type Rooms = Arc<Vector<RoomListItem>>;
@@ -11,7 +11,7 @@ pub type Rooms = Arc<Vector<RoomListItem>>;
 pub async fn list_rooms(room_list: &RoomList) -> Rooms {
     tracing::info!("Starting to list rooms");
     let (stream, entries_controller) = room_list.entries_with_dynamic_adapters(50_000);
-    entries_controller.set_filter(Box::new(new_filter_non_left()));
+    entries_controller.set_filter(Box::new(filters::new_filter_non_left()));
     let mut stream = pin!(stream);
 
     let mut rooms = Vector::new();
@@ -25,5 +25,6 @@ pub async fn list_rooms(room_list: &RoomList) -> Rooms {
         diff.apply(&mut rooms);
     }
 
+    tracing::info!("Finished listing rooms, found {} rooms", rooms.len());
     Arc::new(rooms)
 }

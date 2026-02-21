@@ -166,7 +166,7 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
 
     loop {
         let action = receiver.select_next_some().await;
-        tracing::info!("Received action: {:?}", action);
+        tracing::info!("Received action: {}", action);
         match action {
             Action::CreateMatrixClient { server } => match &state {
                 State::WaitingForServerName | State::Initialized(_) => {
@@ -248,7 +248,7 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
 
 /// Helper function to send an event to the emitter.
 async fn send(event: Event, emitter: &mut mpsc::Sender<Event>) {
-    tracing::info!("Sending event: {:?}", event);
+    tracing::info!("Sending event: {}", event);
     match emitter.send(event).await {
         Ok(_) => (),
         Err(error) => tracing::error!("Failed to send event: {:?}", error),
@@ -270,4 +270,34 @@ async fn unauthenticated(emitter: &mut mpsc::Sender<Event>) {
 /// Creates an [`iced`] subscription for the matrix bridge.
 pub fn subscribe() -> iced::Subscription<Event> {
     iced::Subscription::run(|| iced::stream::channel(CHANNEL_SIZE, subscription_handler))
+}
+
+impl std::fmt::Display for Event {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Event::Stale(sender) => write!(f, "Stale({:?})", sender),
+            Event::Ready => write!(f, "Ready"),
+            Event::Error(error) => write!(f, "Error({})", error),
+            Event::Authenticated => write!(f, "Authenticated"),
+            Event::SessionRestoreFailed => write!(f, "SessionRestoreFailed"),
+            Event::RoomList(generic_vector) => {
+                write!(f, "RoomList({} rooms)", generic_vector.len())
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for Action {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Action::CreateMatrixClient { server } => {
+                write!(f, "CreateMatrixClient {{ server: {} }}", server)
+            }
+            Action::Authenticate { username, .. } => {
+                write!(f, "Authenticate {{ username: {} }}", username)
+            }
+            Action::RestoreSession => write!(f, "RestoreSession"),
+            Action::ListAllRooms => write!(f, "ListAllRooms"),
+        }
+    }
 }
