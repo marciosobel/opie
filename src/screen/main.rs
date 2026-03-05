@@ -1,20 +1,18 @@
 use iced::{
     Element,
-    widget::{center, column, row, text},
+    widget::{center, column, container, row, text},
 };
+use matrix_sdk::Room;
 
 use crate::{
     Action,
-    matrix::{
-        bridge::{Action as MatrixAction, Event as MatrixEvent, MatrixBridgeSender},
-        services::Rooms,
-    },
+    matrix::bridge::{Action as MatrixAction, Event as MatrixEvent, MatrixBridgeSender},
 };
 
 #[derive(Debug, Clone)]
 pub struct State {
     // bridge: MatrixBridgeSender,
-    rooms: Rooms,
+    rooms: Vec<Room>,
 }
 
 #[derive(Debug, Clone)]
@@ -31,7 +29,7 @@ impl State {
 
         Self {
             // bridge,
-            rooms: Rooms::default(),
+            rooms: Vec::new(),
         }
     }
 
@@ -56,8 +54,18 @@ impl State {
         let mut column = column![];
 
         for room in self.rooms.iter() {
-            let name = room.name().unwrap_or("Failed to get name".into());
-            column = column.push(text(name));
+            let name = room
+                .cached_display_name()
+                .map(|name| name.to_string())
+                .unwrap_or("Failed to get name".into());
+
+            let room_element = if room.is_space() {
+                container(text(name)).style(container::primary)
+            } else {
+                container(text(name))
+            };
+
+            column = column.push(room_element);
         }
 
         column.into()

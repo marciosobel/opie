@@ -6,6 +6,3 @@ pub use session_path::*;
 
 mod new_client;
 pub use new_client::*;
-
-mod room;
-pub use room::*;

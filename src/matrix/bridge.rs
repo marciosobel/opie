@@ -2,30 +2,16 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use iced::futures::{SinkExt, StreamExt, channel::mpsc};
-use matrix_sdk::Client;
-use matrix_sdk_ui::{
-    RoomListService,
-    room_list_service::{self, RoomList},
-    sync_service::{self, SyncService},
-};
+use matrix_sdk::{Client, Room};
 use thiserror::Error;
 
-use crate::matrix::services::{self, RestoreStatus as SessionRestoreStatus, Rooms};
+use crate::matrix::services::{self, RestoreStatus as SessionRestoreStatus};
 
 const CHANNEL_SIZE: usize = 64;
 
 /// A bridge between the Matrix SDK and the rest of the application.
 #[derive(Clone)]
 pub struct Bridge(Client);
-
-/// Services provided by the Matrix client
-#[derive(Clone)]
-pub struct Services {
-    /// A reference to the room list service.
-    room_list: Arc<RoomListService>,
-    /// A reference to the sync service.
-    sync: Arc<SyncService>,
-}
 
 /// Events emitted by the Matrix bridge.
 #[derive(Debug, Clone)]
@@ -41,7 +27,7 @@ pub enum Event {
     /// A session restore was attempted, but no session was found on disk or it was expired.
     SessionRestoreFailed,
     /// A list of rooms that the user is a member of.
-    RoomList(Rooms),
+    RoomList(Vec<Room>),
 }
 
 /// Actions (or commands) that can be sent to the Matrix bridge.
@@ -64,7 +50,7 @@ enum State {
     /// The bridge has been initialized and is ready to use.
     Initialized(Bridge),
     /// The user has been authenticated and the services have been initialized.
-    Authenticated { services: Services },
+    Authenticated(Bridge),
 }
 
 /// A sender for sending actions to the Matrix bridge.
@@ -98,36 +84,13 @@ impl Bridge {
             .map_err(|error| Arc::new(error).into())
     }
 
+    pub fn get_joined_rooms(&self) -> Vec<Room> {
+        self.client().joined_rooms()
+    }
+
     /// Gets a reference to the Matrix SDK client.
     pub fn client(&self) -> Client {
         self.0.clone()
-    }
-}
-
-impl Services {
-    /// Creates a new instance of the services provided by the Matrix client.
-    pub async fn new(client: Client) -> Result<Self, Error> {
-        if !services::is_authenticated(&client) {
-            return Err(Error::NotAuthenticated);
-        }
-
-        let sync = SyncService::builder(client.clone())
-            .build()
-            .await
-            .map(Arc::new)
-            .map_err(Arc::new)?;
-
-        let room_list = sync.room_list_service();
-
-        sync.start().await;
-
-        Ok(Services { room_list, sync })
-    }
-
-    /// Returns the room list from the [`RoomListService`]
-    pub async fn room_list(&self) -> Result<RoomList, Error> {
-        let room_list = self.room_list.all_rooms().await.map_err(Arc::new)?;
-        Ok(room_list)
     }
 }
 
@@ -138,12 +101,6 @@ pub enum Error {
 
     #[error("An error occurred in the Matrix SDK: {0}")]
     SdkError(#[from] Arc<matrix_sdk::Error>),
-
-    #[error("An error ocurred in the room list service: {0}")]
-    RoomListServiceError(#[from] Arc<room_list_service::Error>),
-
-    #[error("An error ocurred in the sync service: {0}")]
-    SyncServiceError(#[from] Arc<sync_service::Error>),
 
     #[error("The action sent is not valid for the current state of the bridge")]
     InvalidAction,
@@ -185,15 +142,7 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
             Action::Authenticate { username, password } => match &state {
                 State::Initialized(bridge) => match bridge.authenticate(username, password).await {
                     Ok(_) => {
-                        let services = match Services::new(bridge.client()).await {
-                            Ok(services) => services,
-                            Err(error) => {
-                                send(error.into(), &mut emitter).await;
-                                continue;
-                            }
-                        };
-
-                        state = State::Authenticated { services };
+                        state = State::Authenticated(bridge.clone());
                         send(Event::Authenticated, &mut emitter).await
                     }
                     Err(error) => send(Event::Error(error), &mut emitter).await,
@@ -207,14 +156,7 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
                     Ok(status) => {
                         let event = match status {
                             SessionRestoreStatus::Restored => {
-                                let services = match Services::new(bridge.client()).await {
-                                    Ok(services) => services,
-                                    Err(error) => {
-                                        send(error.into(), &mut emitter).await;
-                                        continue;
-                                    }
-                                };
-                                state = State::Authenticated { services };
+                                state = State::Authenticated(bridge.clone());
                                 Event::Authenticated
                             }
                             SessionRestoreStatus::NoSession => Event::SessionRestoreFailed,
@@ -226,17 +168,9 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
                 _ => invalid_action(&mut emitter).await,
             },
             Action::ListAllRooms => match &state {
-                State::Authenticated { services } => {
-                    let room_list = match services.room_list().await {
-                        Ok(room_list) => Arc::new(room_list),
-                        Err(error) => {
-                            send(error.into(), &mut emitter).await;
-                            continue;
-                        }
-                    };
-
-                    let rooms = services::list_rooms(&room_list).await;
-                    send(Event::RoomList(rooms), &mut emitter).await
+                State::Authenticated(bridge) => {
+                    let rooms = bridge.get_joined_rooms();
+                    send(Event::RoomList(rooms), &mut emitter).await;
                 }
                 State::Initialized(_) | State::WaitingForServerName => {
                     unauthenticated(&mut emitter).await
@@ -280,8 +214,8 @@ impl std::fmt::Display for Event {
             Event::Error(error) => write!(f, "Error({})", error),
             Event::Authenticated => write!(f, "Authenticated"),
             Event::SessionRestoreFailed => write!(f, "SessionRestoreFailed"),
-            Event::RoomList(generic_vector) => {
-                write!(f, "RoomList({} rooms)", generic_vector.len())
+            Event::RoomList(rooms) => {
+                write!(f, "RoomList({} rooms)", rooms.len())
             }
         }
     }
