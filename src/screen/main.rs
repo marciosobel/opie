@@ -1,12 +1,14 @@
 use iced::{
-    Element,
+    Element, Length,
     widget::{center, column, container, row, text},
 };
-use matrix_sdk::Room;
 
 use crate::{
     Action,
-    matrix::bridge::{Action as MatrixAction, Event as MatrixEvent, MatrixBridgeSender},
+    matrix::{
+        bridge::{Action as MatrixAction, Event as MatrixEvent, MatrixBridgeSender},
+        services::Room,
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -61,6 +63,8 @@ impl State {
 
             let room_element = if room.is_space() {
                 container(text(name)).style(container::primary)
+            } else if room.is_dm {
+                container(text(name)).style(container::danger)
             } else {
                 container(text(name))
             };
@@ -68,7 +72,15 @@ impl State {
             column = column.push(room_element);
         }
 
-        column.into()
+        container(column)
+            .height(Length::Fill)
+            .style(|theme| {
+                let palette = theme.extended_palette();
+                container::Style::default()
+                    .background(palette.background.weak.color)
+                    .color(palette.background.weak.text)
+            })
+            .into()
     }
 
     fn matrix_event(&mut self, event: MatrixEvent) -> Action<Instruction, Message> {

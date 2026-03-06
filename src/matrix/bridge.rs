@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use iced::futures::{SinkExt, StreamExt, channel::mpsc};
-use matrix_sdk::{Client, Room};
+use matrix_sdk::Client;
 use thiserror::Error;
 
-use crate::matrix::services::{self, RestoreStatus as SessionRestoreStatus};
+use crate::matrix::services::{self, RestoreStatus as SessionRestoreStatus, Room};
 
 const CHANNEL_SIZE: usize = 64;
 
@@ -39,7 +39,7 @@ pub enum Action {
     Authenticate { username: String, password: String },
     /// Attempt to restore a session from disk.
     RestoreSession,
-    /// Gets the underlying [room_list_service]
+    /// Gets the list to all rooms
     ListAllRooms,
 }
 
@@ -84,8 +84,8 @@ impl Bridge {
             .map_err(|error| Arc::new(error).into())
     }
 
-    pub fn get_joined_rooms(&self) -> Vec<Room> {
-        self.client().joined_rooms()
+    pub async fn get_joined_rooms(&self) -> Vec<Room> {
+        services::list_joined_rooms(self.client()).await
     }
 
     /// Gets a reference to the Matrix SDK client.
@@ -169,7 +169,7 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
             },
             Action::ListAllRooms => match &state {
                 State::Authenticated(bridge) => {
-                    let rooms = bridge.get_joined_rooms();
+                    let rooms = bridge.get_joined_rooms().await;
                     send(Event::RoomList(rooms), &mut emitter).await;
                 }
                 State::Initialized(_) | State::WaitingForServerName => {
