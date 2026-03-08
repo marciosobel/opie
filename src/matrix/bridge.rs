@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use iced::futures::{SinkExt, StreamExt, channel::mpsc};
-use matrix_sdk::Client;
+use matrix_sdk::{Client, config::SyncSettings};
 use thiserror::Error;
 
 use crate::matrix::services::{self, RestoreStatus as SessionRestoreStatus, Room};
@@ -26,6 +26,8 @@ pub enum Event {
     Authenticated,
     /// A session restore was attempted, but no session was found on disk or it was expired.
     SessionRestoreFailed,
+    /// The client is syncronizing with the server, which may take some time. The client is not ready to use until the sync is complete.
+    Syncing,
     /// A list of rooms that the user is a member of.
     RoomList(Vec<Room>),
 }
@@ -74,6 +76,19 @@ impl Bridge {
         services::authenticate(self.client(), username, password)
             .await
             .map_err(Arc::new)?;
+
+        Ok(())
+    }
+
+    /// Synchronize the client’s state with the latest state on the server.
+    pub async fn sync_once(&self) -> Result<(), Error> {
+        tracing::info!("Syncing the client");
+        let sync_settings = SyncSettings::default();
+        self.client()
+            .sync_once(sync_settings)
+            .await
+            .map_err(Arc::new)?;
+
         Ok(())
     }
 
@@ -84,8 +99,11 @@ impl Bridge {
             .map_err(|error| Arc::new(error).into())
     }
 
-    pub async fn get_joined_rooms(&self) -> Vec<Room> {
-        services::list_joined_rooms(self.client()).await
+    /// Returns a list of the rooms that the user has joined.
+    pub async fn get_joined_rooms(&self) -> Result<Vec<Room>, Error> {
+        services::list_joined_rooms(self.client())
+            .await
+            .map_err(|error| Arc::new(error).into())
     }
 
     /// Gets a reference to the Matrix SDK client.
@@ -140,13 +158,20 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
                 _ => invalid_action(&mut emitter).await,
             },
             Action::Authenticate { username, password } => match &state {
-                State::Initialized(bridge) => match bridge.authenticate(username, password).await {
-                    Ok(_) => {
-                        state = State::Authenticated(bridge.clone());
-                        send(Event::Authenticated, &mut emitter).await
+                State::Initialized(bridge) => {
+                    match bridge.authenticate(username, password).await {
+                        Ok(_) => send(Event::Syncing, &mut emitter).await,
+                        Err(error) => send(Event::Error(error), &mut emitter).await,
                     }
-                    Err(error) => send(Event::Error(error), &mut emitter).await,
-                },
+
+                    match bridge.sync_once().await {
+                        Ok(_) => {
+                            state = State::Authenticated(bridge.clone());
+                            send(Event::Authenticated, &mut emitter).await
+                        }
+                        Err(error) => send(Event::Error(error), &mut emitter).await,
+                    }
+                }
                 State::WaitingForServerName | State::Authenticated { .. } => {
                     invalid_action(&mut emitter).await
                 }
@@ -169,7 +194,13 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
             },
             Action::ListAllRooms => match &state {
                 State::Authenticated(bridge) => {
-                    let rooms = bridge.get_joined_rooms().await;
+                    let rooms = match bridge.get_joined_rooms().await {
+                        Ok(rooms) => rooms,
+                        Err(error) => {
+                            send(Event::Error(error), &mut emitter).await;
+                            continue;
+                        }
+                    };
                     send(Event::RoomList(rooms), &mut emitter).await;
                 }
                 State::Initialized(_) | State::WaitingForServerName => {
@@ -217,6 +248,7 @@ impl std::fmt::Display for Event {
             Event::RoomList(rooms) => {
                 write!(f, "RoomList({} rooms)", rooms.len())
             }
+            Event::Syncing => write!(f, "Syncing"),
         }
     }
 }

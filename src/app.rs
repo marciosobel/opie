@@ -79,7 +79,7 @@ impl App {
     }
 
     pub fn theme(&self, _: window::Id) -> iced::theme::Theme {
-        iced::theme::Theme::KanagawaDragon
+        iced::theme::Theme::KanagawaWave
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -222,6 +222,10 @@ impl App {
                 tracing::info!("Authentication successful, showing the main screen");
                 let state = main::State::new(bridge);
                 self.screen = Screen::Main(state);
+                Task::none()
+            }
+            matrix::bridge::Event::Syncing => {
+                self.screen = Screen::Loading("Syncing the client...".to_string());
                 Task::none()
             }
             matrix::bridge::Event::SessionRestoreFailed => {
