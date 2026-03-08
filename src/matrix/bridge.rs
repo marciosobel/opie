@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Result;
 use iced::futures::{SinkExt, StreamExt, channel::mpsc};
-use matrix_sdk::{Client, config::SyncSettings};
+use matrix_sdk::{Client, config::SyncSettings, ruma::OwnedRoomId};
 use thiserror::Error;
 
 use crate::matrix::services::{self, RestoreStatus as SessionRestoreStatus, Room};
@@ -29,7 +29,7 @@ pub enum Event {
     /// The client is syncronizing with the server, which may take some time. The client is not ready to use until the sync is complete.
     Syncing,
     /// A list of rooms that the user is a member of.
-    RoomList(Vec<Room>),
+    RoomList(Arc<HashMap<OwnedRoomId, Room>>),
 }
 
 /// Actions (or commands) that can be sent to the Matrix bridge.
@@ -100,10 +100,12 @@ impl Bridge {
     }
 
     /// Returns a list of the rooms that the user has joined.
-    pub async fn get_joined_rooms(&self) -> Result<Vec<Room>, Error> {
-        services::list_joined_rooms(self.client())
+    pub async fn get_joined_rooms(&self) -> Result<Arc<HashMap<OwnedRoomId, Room>>, Error> {
+        let rooms = services::list_joined_rooms(self.client())
             .await
-            .map_err(|error| Arc::new(error).into())
+            .map_err(Arc::new)?;
+
+        Ok(Arc::new(rooms))
     }
 
     /// Gets a reference to the Matrix SDK client.

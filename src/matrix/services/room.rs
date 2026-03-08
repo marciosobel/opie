@@ -4,31 +4,33 @@ use futures::StreamExt;
 use matrix_sdk::{Client, Error, Room as MatrixRoom, room::ParentSpace, ruma::OwnedRoomId};
 
 /// Lists all rooms the user has joined, along with their parents and children relationships.
-pub async fn list_joined_rooms(client: Client) -> Result<Vec<Room>, matrix_sdk::Error> {
+pub async fn list_joined_rooms(
+    client: Client,
+) -> Result<HashMap<OwnedRoomId, Room>, matrix_sdk::Error> {
     tracing::info!("Listing joined rooms");
     let joined_rooms = client.joined_rooms();
-    tracing::info!("Client returned {} rooms", joined_rooms.len());
 
-    let mut rooms = vec![];
+    let mut rooms = HashMap::new();
     for room in joined_rooms {
         let room = Room::new(room).await?;
-        rooms.push(room);
+        rooms.insert(room.id(), room);
     }
 
+    tracing::info!("Client returning {} rooms", rooms.len());
     add_child_to_parents(&mut rooms);
-
-    tracing::info!("Returning {} rooms", rooms.len());
     Ok(rooms)
 }
 
 /// Looks for all rooms, takes their parents, and adds the room as a child to the parent.
 /// This is necessary because the Matrix SDK only provides parent information, so we need to derive the child information ourselves.
-fn add_child_to_parents(rooms: &mut Vec<Room>) {
+fn add_child_to_parents(rooms: &mut HashMap<OwnedRoomId, Room>) {
+    tracing::info!("Adding child rooms to their parents");
+
     // A map where it will contain the parent's `OwnedRoomId` related to all it's children.
     let mut child_map: HashMap<OwnedRoomId, Vec<OwnedRoomId>> = HashMap::new();
 
     // Populate the map
-    for room in rooms.iter_mut() {
+    for (_, room) in rooms.iter_mut() {
         for parent_id in &room.parents {
             child_map
                 .entry(parent_id.clone())
@@ -38,13 +40,10 @@ fn add_child_to_parents(rooms: &mut Vec<Room>) {
     }
 
     // Get the children and append them to the parent.
-    for parent in rooms {
-        let Some(child_ids) = child_map.get(&parent.id) else {
-            // Not a parent.
-            continue;
-        };
-
-        parent.children.extend(child_ids.iter().cloned());
+    for (parent_id, parent) in rooms {
+        if let Some(child_ids) = child_map.get(parent_id) {
+            parent.children.extend(child_ids.iter().cloned());
+        }
     }
 }
 

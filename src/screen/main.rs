@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use iced::{
     Element, Length,
-    widget::{center, column, container, row, text},
+    widget::{button, center, column, container, row, text},
 };
 use matrix_sdk::ruma::OwnedRoomId;
 
@@ -18,9 +18,10 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct State {
     // bridge: MatrixBridgeSender,
-    rooms: Vec<Room>,
+    rooms: Arc<HashMap<OwnedRoomId, Room>>,
     collapsible_spaces: HashMap<OwnedRoomId, bool>,
     collapsible_dms_open: bool,
+    focused_room: Option<OwnedRoomId>,
 }
 
 #[derive(Debug, Clone)]
@@ -30,6 +31,7 @@ pub enum Message {
     SpaceClosed(OwnedRoomId),
     DirectMessagesOpened,
     DirectMessagesClosed,
+    FocusRoom(OwnedRoomId),
 }
 
 #[derive(Debug, Clone)]
@@ -41,9 +43,10 @@ impl State {
 
         Self {
             // bridge,
-            rooms: Vec::new(),
+            rooms: Arc::default(),
             collapsible_spaces: HashMap::new(),
             collapsible_dms_open: false,
+            focused_room: None,
         }
     }
 
@@ -60,6 +63,7 @@ impl State {
             }
             Message::DirectMessagesOpened => self.collapsible_dms_open = true,
             Message::DirectMessagesClosed => self.collapsible_dms_open = false,
+            Message::FocusRoom(id) => self.focused_room = Some(id),
         }
 
         Action::none()
@@ -70,7 +74,17 @@ impl State {
     }
 
     pub fn main_view(&self) -> Element<'_, Message> {
-        center(text("Welcome to the chat screen")).into()
+        if let Some(room_id) = &self.focused_room {
+            let room = self.rooms.get(room_id).expect(&format!(
+                "Something went wrong getting the room with id {}",
+                room_id
+            ));
+
+            let name = room.display_name().unwrap_or("Unknown".into());
+            center(text!("Focused on room {}", name)).into()
+        } else {
+            center(text("Welcome to the chat screen")).into()
+        }
     }
 
     pub fn sidebar(&self) -> Element<'_, Message> {
@@ -78,7 +92,7 @@ impl State {
 
         let root_parents = self
             .rooms
-            .iter()
+            .values()
             .filter(|room| room.parents().is_empty() || room.is_direct())
             .collect::<Vec<_>>();
 
@@ -117,7 +131,7 @@ impl State {
         let mut content = column![].spacing(10);
 
         for child_id in space.children() {
-            let Some(child) = self.rooms.iter().find(|room| room.id() == *child_id) else {
+            let Some(child) = self.rooms.values().find(|room| room.id() == *child_id) else {
                 tracing::error!("Failed to find child room with id {}", child_id);
                 continue;
             };
@@ -153,16 +167,16 @@ impl State {
             .display_name()
             .unwrap_or("Failed to get room name".into());
 
-        text(name).into()
+        button(text(name))
+            .on_press(Message::FocusRoom(room.id()))
+            .into()
     }
 
     fn matrix_event(&mut self, event: MatrixEvent) -> Action<Instruction, Message> {
         match event {
-            MatrixEvent::RoomList(rooms) => {
-                self.rooms = rooms;
-                Action::none()
-            }
-            _ => Action::none(),
+            MatrixEvent::RoomList(rooms) => self.rooms = rooms,
+            _ => {}
         }
+        Action::none()
     }
 }
