@@ -37,6 +37,7 @@ pub async fn login(
     client
         .matrix_auth()
         .login_username(&username, &password)
+        .initial_device_display_name("Opie for desktop")
         .await?;
 
     Ok(())
