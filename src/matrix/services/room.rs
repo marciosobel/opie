@@ -1,7 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
+use bytes::Bytes;
 use futures::StreamExt;
-use matrix_sdk::{Client, Error, Room as MatrixRoom, room::ParentSpace, ruma::OwnedRoomId};
+use matrix_sdk::{
+    Client, Error, Room as MatrixRoom, media::MediaFormat, room::ParentSpace, ruma::OwnedRoomId,
+};
 
 /// Lists all rooms the user has joined, along with their parents and children relationships.
 pub async fn list_joined_rooms(
@@ -55,6 +58,7 @@ pub struct Room {
     parents: HashSet<OwnedRoomId>,
     is_direct: bool,
     is_space: bool,
+    avatar: Option<Bytes>,
 }
 
 impl Room {
@@ -65,6 +69,10 @@ impl Room {
             .map(|display_name| display_name.to_string());
         let is_direct = matrix_room.is_direct().await?;
         let is_space = matrix_room.is_space();
+        let avatar = match matrix_room.avatar(MediaFormat::File).await? {
+            Some(bytes) => Some(Bytes::from_owner(bytes)),
+            None => None,
+        };
 
         let mut parents = HashSet::new();
 
@@ -98,6 +106,7 @@ impl Room {
             parents,
             is_direct,
             is_space,
+            avatar,
         })
     }
 
@@ -129,6 +138,11 @@ impl Room {
     /// Returns the ID of the room.
     pub fn id(&self) -> OwnedRoomId {
         self.id.clone()
+    }
+
+    /// Returns the avatar of the room, if it exists.
+    pub fn avatar(&self) -> Option<&Bytes> {
+        self.avatar.as_ref()
     }
 }
 
