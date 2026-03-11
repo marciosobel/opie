@@ -1,3 +1,5 @@
+#![recursion_limit = "138"]
+
 pub mod app;
 pub use app::App;
 
