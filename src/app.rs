@@ -206,12 +206,10 @@ impl App {
                 self.screen = Screen::Loading("Creating matrix client...".to_string());
                 _ = bridge.try_send(MatrixAction::CreateMatrixClient { server });
                 _ = bridge.try_send(MatrixAction::RestoreSession);
-
-                Task::none()
             }
             matrix::bridge::Event::Error(error) => {
                 tracing::error!("Received error event from matrix bridge: {:?}", error);
-                Task::done(Message::Error(error.into()))
+                return Task::done(Message::Error(error.into()));
             }
             matrix::bridge::Event::Authenticated => {
                 let Some(bridge) = self.bridge.clone() else {
@@ -222,24 +220,23 @@ impl App {
                 tracing::info!("Authentication successful, showing the main screen");
                 let state = main::State::new(bridge);
                 self.screen = Screen::Main(state);
-                Task::none()
             }
             matrix::bridge::Event::Syncing => {
                 self.screen = Screen::Loading("Syncing the client...".to_string());
-                Task::none()
             }
             matrix::bridge::Event::SessionRestoreFailed => {
                 tracing::info!("Session restore failed, showing auth screen");
                 let state = auth::State::new();
                 self.screen = Screen::Auth(state);
-                Task::none()
             }
             matrix::bridge::Event::Ready => {
                 tracing::info!("Bridge created successfully");
-                Task::none()
             }
-            matrix::bridge::Event::RoomList(_) => todo!(),
+            matrix::bridge::Event::RoomList(_) => {}
+            matrix::bridge::Event::TimelineEvent(_) => {}
         }
+
+        Task::none()
     }
 }
 

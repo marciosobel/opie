@@ -5,13 +5,14 @@ use iced::{
     widget::{button, center, column, container, image, row, sensor, space, text},
 };
 use matrix_sdk::ruma::OwnedRoomId;
+use matrix_sdk_ui::{eyeball_im::Vector, timeline::TimelineItem};
 
 use crate::{
     Action,
     components::collapsible,
     matrix::{
         bridge::{Action as MatrixAction, Event as MatrixEvent, MatrixBridgeSender},
-        services::Room,
+        services::{Room, TimelineUpdateEvent},
     },
 };
 
@@ -27,12 +28,13 @@ const SIDEBAR_ROOM_AVATAR_SIZE: u32 = 20;
 
 #[derive(Debug, Clone)]
 pub struct State {
-    // bridge: MatrixBridgeSender,
+    bridge: MatrixBridgeSender,
     rooms: Arc<HashMap<OwnedRoomId, Room>>,
     collapsible_spaces: HashMap<OwnedRoomId, bool>,
     collapsible_dms_open: bool,
     focused_room: Option<OwnedRoomId>,
     room_avatar_cache: HashMap<OwnedRoomId, Image>,
+    timelines: HashMap<OwnedRoomId, Vector<Arc<TimelineItem>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -54,12 +56,13 @@ impl State {
         _ = bridge.try_send(MatrixAction::ListAllRooms);
 
         Self {
-            // bridge,
+            bridge,
             rooms: Arc::default(),
             collapsible_spaces: HashMap::new(),
             collapsible_dms_open: true,
             focused_room: None,
             room_avatar_cache: HashMap::new(),
+            timelines: HashMap::new(),
         }
     }
 
@@ -76,7 +79,17 @@ impl State {
             }
             Message::DirectMessagesOpened => self.collapsible_dms_open = true,
             Message::DirectMessagesClosed => self.collapsible_dms_open = false,
-            Message::FocusRoom(id) => self.focused_room = Some(id),
+            Message::FocusRoom(id) => {
+                if let Some(current_focused_room) = &self.focused_room {
+                    tracing::info!("Closing the current timeline before requesting another one");
+                    _ = self
+                        .bridge
+                        .try_send(MatrixAction::CloseTimeline(current_focused_room.clone()));
+                }
+                self.focused_room = Some(id.clone());
+                tracing::info!("Focusing room with id {}", id);
+                _ = self.bridge.try_send(MatrixAction::GetTimeline(id));
+            }
             Message::LoadRoomAvatar(id) => {
                 let Some(room) = self.rooms.get(&id) else {
                     tracing::error!(
@@ -106,27 +119,54 @@ impl State {
     }
 
     pub fn main_view(&self) -> Element<'_, Message> {
-        if let Some(room_id) = &self.focused_room {
-            let room = self.rooms.get(room_id).expect(&format!(
-                "Something went wrong getting the room with id {}",
-                room_id
-            ));
+        let Some(room_id) = &self.focused_room else {
+            return center(text("Welcome to the chat screen")).into();
+        };
 
-            let name = room.display_name().unwrap_or("Unknown".into());
-            center(text!("Focused on room {}", name)).into()
-        } else {
-            center(text("Welcome to the chat screen")).into()
+        let Some(timeline) = self.timelines.get(room_id) else {
+            return center(text("Loading...")).into();
+        };
+
+        let mut content = column![text!("Timeline for {}", room_id)];
+        for item in timeline.iter() {
+            if let Some(item) = item.as_event() {
+                let item_content = item.content();
+                if !item_content.is_message() {
+                    continue;
+                }
+
+                let Some(message) = item_content.as_message() else {
+                    continue;
+                };
+
+                let message = message.body().to_string();
+                content = content.push(text(message));
+            }
         }
+
+        content.into()
     }
 
     pub fn sidebar(&self) -> Element<'_, Message> {
         let mut sidebar = column![];
 
-        let root_parents = self
+        let mut root_parents = self
             .rooms
             .values()
             .filter(|room| room.parents().is_empty() || room.is_direct())
             .collect::<Vec<_>>();
+
+        root_parents.sort_by(|a, b| {
+            let name_a = a
+                .display_name()
+                .unwrap_or_else(|| a.id().to_string())
+                .to_lowercase();
+            let name_b = b
+                .display_name()
+                .unwrap_or_else(|| b.id().to_string())
+                .to_lowercase();
+            name_a.cmp(&name_b)
+        });
 
         let direct_rooms = root_parents.iter().filter(|room| room.is_direct());
         let mut dms = column![];
@@ -164,6 +204,22 @@ impl State {
 
     fn render_space<'a>(&'a self, space: &'a Room, depth: u8) -> Element<'a, Message> {
         let mut content = column![];
+
+        let mut child_ids = space.children().iter().collect::<Vec<_>>();
+        child_ids.sort_by(|a, b| {
+            let room_a = self.rooms.get(*a).expect("Failed to find child room");
+            let room_b = self.rooms.get(*b).expect("Failed to find child room");
+
+            let name_a = room_a
+                .display_name()
+                .unwrap_or_else(|| room_a.id().to_string())
+                .to_lowercase();
+            let name_b = room_b
+                .display_name()
+                .unwrap_or_else(|| room_b.id().to_string())
+                .to_lowercase();
+            name_a.cmp(&name_b)
+        });
 
         for child_id in space.children() {
             let Some(child) = self.rooms.values().find(|room| room.id() == *child_id) else {
@@ -241,6 +297,24 @@ impl State {
     fn matrix_event(&mut self, event: MatrixEvent) -> Action<Instruction, Message> {
         match event {
             MatrixEvent::RoomList(rooms) => self.rooms = rooms,
+            MatrixEvent::TimelineEvent(event) => match event {
+                TimelineUpdateEvent::Initial(room_id, items) => {
+                    self.timelines.insert(room_id, items);
+                }
+                TimelineUpdateEvent::Updated(room_id, diffs) => {
+                    let current_timeline = self
+                        .timelines
+                        .entry(room_id.clone())
+                        .or_insert_with(Vector::new);
+
+                    for diff in diffs {
+                        diff.apply(current_timeline);
+                    }
+                }
+                TimelineUpdateEvent::Closed(room_id) => {
+                    self.timelines.remove(&room_id);
+                }
+            },
             _ => {}
         }
         Action::none()

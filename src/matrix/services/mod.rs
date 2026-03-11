@@ -9,3 +9,6 @@ pub use new_client::*;
 
 mod room;
 pub use room::*;
+
+mod timeline;
+pub use timeline::*;

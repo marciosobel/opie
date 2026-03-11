@@ -5,13 +5,18 @@ use iced::futures::{SinkExt, StreamExt, channel::mpsc};
 use matrix_sdk::{Client, config::SyncSettings, ruma::OwnedRoomId};
 use thiserror::Error;
 
-use crate::matrix::services::{self, RestoreStatus as SessionRestoreStatus, Room};
+use crate::matrix::services::{
+    self, RestoreStatus as SessionRestoreStatus, Room, TimelineUpdateEvent,
+};
 
 const CHANNEL_SIZE: usize = 64;
 
 /// A bridge between the Matrix SDK and the rest of the application.
 #[derive(Clone)]
-pub struct Bridge(Client);
+pub struct Bridge {
+    client: Client,
+    active_timelines: HashMap<OwnedRoomId, Arc<services::Timeline>>,
+}
 
 /// Events emitted by the Matrix bridge.
 #[derive(Debug, Clone)]
@@ -30,6 +35,8 @@ pub enum Event {
     Syncing,
     /// A list of rooms that the user is a member of.
     RoomList(Arc<HashMap<OwnedRoomId, Room>>),
+    /// The timeline for a room has been updated with new events or changes to existing events. The diff contains the changes that were made to the timeline.
+    TimelineEvent(TimelineUpdateEvent),
 }
 
 /// Actions (or commands) that can be sent to the Matrix bridge.
@@ -43,6 +50,10 @@ pub enum Action {
     RestoreSession,
     /// Gets the list to all rooms
     ListAllRooms,
+    /// Gets the timeline for the given room.
+    GetTimeline(OwnedRoomId),
+    /// Closes the timeline for the given room, aborting the background task that listens for updates.
+    CloseTimeline(OwnedRoomId),
 }
 
 /// Current state of the Matrix bridge.
@@ -61,11 +72,12 @@ pub type MatrixBridgeSender = mpsc::Sender<Action>;
 impl Bridge {
     /// Creates a new Matrix bridge.
     pub async fn new(server: String) -> Result<Self, Error> {
-        let bridge = services::new_client(server)
-            .await
-            .map(Self)
-            .map_err(Arc::new)?;
-        Ok(bridge)
+        let client = services::new_client(server).await.map_err(Arc::new)?;
+
+        Ok(Self {
+            client,
+            active_timelines: HashMap::new(),
+        })
     }
 
     /// Authenticates the user with the Matrix server.
@@ -110,7 +122,7 @@ impl Bridge {
 
     /// Gets a reference to the Matrix SDK client.
     pub fn client(&self) -> Client {
-        self.0.clone()
+        self.client.clone()
     }
 
     /// Spawns a task that syncs the client in the background. If you wish to sync the client once, use [`sync_once`](Self::sync_once) instead.
@@ -124,6 +136,44 @@ impl Bridge {
             }
         });
     }
+
+    /// Gets the timeline for a room, spawning a background task that listens for updates and updates the timeline accordingly.
+    pub async fn room_timeline(
+        &mut self,
+        id: OwnedRoomId,
+    ) -> Result<tokio::sync::mpsc::Receiver<TimelineUpdateEvent>, Error> {
+        let Some(room) = self.client().get_room(&id) else {
+            return Err(Error::RoomNotFound(id));
+        };
+
+        tracing::info!("Subscribing to timeline for room {}", id);
+        let (timeline, rx) = services::timeline(room).await.map_err(Arc::new)?;
+
+        let old_timeline = self.active_timelines.insert(id.clone(), Arc::new(timeline));
+
+        // drop the old timeline, preventing duplicate events.
+        {
+            if old_timeline.is_some() {
+                tracing::info!("Old timeline handler found for room {}", &id);
+            }
+        }
+
+        Ok(rx)
+    }
+
+    /// Closes the timeline for a room, aborting the background task that listens for updates.
+    /// This should be called when a timeline is no longer needed, such as when leaving a room or closing a timeline view.
+    pub async fn close_timeline(&self, room_id: OwnedRoomId) {
+        if let Some(timeline) = self.active_timelines.get(&room_id) {
+            tracing::info!("Closing timeline for room {}", room_id);
+            timeline.close().await;
+        } else {
+            tracing::warn!(
+                "Received request to close timeline but no timeline handler found for room {}",
+                room_id
+            );
+        }
+    }
 }
 
 #[derive(Error, Debug, Clone)]
@@ -134,11 +184,17 @@ pub enum Error {
     #[error("An error occurred in the Matrix SDK: {0}")]
     SdkError(#[from] Arc<matrix_sdk::Error>),
 
+    #[error("An error occurred in the Matrix SDK UI timeline: {0}")]
+    TimelineError(#[from] Arc<matrix_sdk_ui::timeline::Error>),
+
     #[error("The action sent is not valid for the current state of the bridge")]
     InvalidAction,
 
     #[error("Not authenticated")]
     NotAuthenticated,
+
+    #[error("Room {0} not found")]
+    RoomNotFound(OwnedRoomId),
 }
 
 impl From<Error> for Event {
@@ -216,6 +272,40 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
                     unauthenticated(&mut emitter).await
                 }
             },
+            Action::GetTimeline(room_id) => match &mut state {
+                State::Authenticated(bridge) => {
+                    let mut timeline_event_rx = match bridge.room_timeline(room_id.clone()).await {
+                        Ok(tuple) => tuple,
+                        Err(error) => {
+                            send(Event::Error(error), &mut emitter).await;
+                            continue;
+                        }
+                    };
+
+                    let mut emitter_clone = emitter.clone();
+                    tokio::spawn(async move {
+                        while let Some(timeline_event) = timeline_event_rx.recv().await {
+                            send(Event::TimelineEvent(timeline_event), &mut emitter_clone).await;
+                        }
+                    });
+                }
+                State::Initialized(_) | State::WaitingForServerName => {
+                    unauthenticated(&mut emitter).await
+                }
+            },
+            Action::CloseTimeline(owned_room_id) => match &state {
+                State::Authenticated(bridge) => {
+                    bridge.close_timeline(owned_room_id.clone()).await;
+                    send(
+                        Event::TimelineEvent(TimelineUpdateEvent::Closed(owned_room_id)),
+                        &mut emitter,
+                    )
+                    .await;
+                }
+                State::Initialized(_) | State::WaitingForServerName => {
+                    unauthenticated(&mut emitter).await
+                }
+            },
         }
     }
 }
@@ -258,6 +348,7 @@ impl std::fmt::Display for Event {
                 write!(f, "RoomList({} rooms)", rooms.len())
             }
             Event::Syncing => write!(f, "Syncing"),
+            Event::TimelineEvent(event) => write!(f, "TimelineEvent({})", event),
         }
     }
 }
@@ -273,6 +364,12 @@ impl std::fmt::Display for Action {
             }
             Action::RestoreSession => write!(f, "RestoreSession"),
             Action::ListAllRooms => write!(f, "ListAllRooms"),
+            Action::GetTimeline(owned_room_id) => {
+                write!(f, "GetTimeline {{ room_id: {} }}", owned_room_id)
+            }
+            Action::CloseTimeline(owned_room_id) => {
+                write!(f, "CloseTimeline {{ room_id: {} }}", owned_room_id)
+            }
         }
     }
 }
