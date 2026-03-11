@@ -82,7 +82,7 @@ impl Bridge {
 
     /// Synchronize the client’s state with the latest state on the server.
     pub async fn sync_once(&self) -> Result<(), Error> {
-        tracing::info!("Syncing the client");
+        tracing::info!("Syncing the client once");
         let sync_settings = SyncSettings::default();
         self.client()
             .sync_once(sync_settings)
@@ -111,6 +111,18 @@ impl Bridge {
     /// Gets a reference to the Matrix SDK client.
     pub fn client(&self) -> Client {
         self.0.clone()
+    }
+
+    /// Spawns a task that syncs the client in the background. If you wish to sync the client once, use [`sync_once`](Self::sync_once) instead.
+    pub fn start_sync(&self) {
+        let client = self.client();
+
+        tracing::info!("Starting Matrix client sync task");
+        tokio::spawn(async move {
+            if let Err(error) = client.sync(SyncSettings::default()).await {
+                tracing::error!("Error during sync: {:?}", error);
+            }
+        });
     }
 }
 
@@ -160,20 +172,14 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
                 _ => invalid_action(&mut emitter).await,
             },
             Action::Authenticate { username, password } => match &state {
-                State::Initialized(bridge) => {
-                    match bridge.authenticate(username, password).await {
-                        Ok(_) => send(Event::Syncing, &mut emitter).await,
-                        Err(error) => send(Event::Error(error), &mut emitter).await,
+                State::Initialized(bridge) => match bridge.authenticate(username, password).await {
+                    Ok(_) => {
+                        bridge.start_sync();
+                        state = State::Authenticated(bridge.clone());
+                        send(Event::Authenticated, &mut emitter).await
                     }
-
-                    match bridge.sync_once().await {
-                        Ok(_) => {
-                            state = State::Authenticated(bridge.clone());
-                            send(Event::Authenticated, &mut emitter).await
-                        }
-                        Err(error) => send(Event::Error(error), &mut emitter).await,
-                    }
-                }
+                    Err(error) => send(Event::Error(error), &mut emitter).await,
+                },
                 State::WaitingForServerName | State::Authenticated { .. } => {
                     invalid_action(&mut emitter).await
                 }
@@ -183,6 +189,7 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
                     Ok(status) => {
                         let event = match status {
                             SessionRestoreStatus::Restored => {
+                                bridge.start_sync();
                                 state = State::Authenticated(bridge.clone());
                                 Event::Authenticated
                             }
