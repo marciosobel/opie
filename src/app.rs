@@ -6,7 +6,6 @@ use iced::{
     window,
 };
 use rand::{RngExt, distr::Alphanumeric};
-use screen_macro::screen;
 use thiserror::Error;
 
 use crate::{
@@ -96,7 +95,9 @@ impl App {
 
             // Screen messages
             Message::Auth(message) => {
-                let screen = screen!(self, Screen::Auth);
+                let Screen::Auth(screen) = &mut self.screen else {
+                    return Task::none();
+                };
 
                 let action = screen
                     .update(message)
@@ -106,7 +107,10 @@ impl App {
                 self.handle_action(action)
             }
             Message::Main(message) => {
-                let screen = screen!(self, Screen::Main);
+                let Screen::Main(screen) = &mut self.screen else {
+                    return Task::none();
+                };
+
                 let action = screen
                     .update(message)
                     .map(Message::Main)
