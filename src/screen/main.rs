@@ -79,17 +79,23 @@ impl State {
             }
             Message::DirectMessagesOpened => self.collapsible_dms_open = true,
             Message::DirectMessagesClosed => self.collapsible_dms_open = false,
-            Message::FocusRoom(id) => {
-                if let Some(current_focused_room) = &self.focused_room {
-                    tracing::info!("Closing the current timeline before requesting another one");
-                    _ = self
-                        .bridge
-                        .try_send(MatrixAction::CloseTimeline(current_focused_room.clone()));
+            Message::FocusRoom(id) => match &self.focused_room {
+                Some(focused_room_id) if *focused_room_id == id => {}
+                maybe_focused_room_id => {
+                    if let Some(focused_room_id) = maybe_focused_room_id {
+                        tracing::info!(
+                            "Closing the current timeline before requesting another one"
+                        );
+                        _ = self
+                            .bridge
+                            .try_send(MatrixAction::CloseTimeline(focused_room_id.clone()));
+                    }
+
+                    self.focused_room = Some(id.clone());
+                    tracing::info!("Focusing room with id {}", id);
+                    _ = self.bridge.try_send(MatrixAction::GetTimeline(id));
                 }
-                self.focused_room = Some(id.clone());
-                tracing::info!("Focusing room with id {}", id);
-                _ = self.bridge.try_send(MatrixAction::GetTimeline(id));
-            }
+            },
             Message::LoadRoomAvatar(id) => {
                 let Some(room) = self.rooms.get(&id) else {
                     tracing::error!(
