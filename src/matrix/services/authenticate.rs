@@ -1,7 +1,7 @@
 use anyhow::Result;
-use matrix_sdk::{AuthSession, Client, authentication::matrix::MatrixSession};
+use matrix_sdk::{Client, Error, authentication::matrix::MatrixSession};
 
-use super::session_path;
+use crate::matrix::session::{ClientSession, Session};
 
 /// Authenticates the user with the Matrix server.
 ///
@@ -11,19 +11,11 @@ pub async fn authenticate(
     client: Client,
     username: String,
     password: String,
+    client_session: ClientSession,
 ) -> Result<(), matrix_sdk::Error> {
-    tracing::info!("Restoring matrix session");
-    match restore_session(client.clone()).await? {
-        RestoreStatus::Restored => {
-            tracing::info!("Session restored successfully");
-        }
-        RestoreStatus::NoSession => {
-            tracing::info!("No session found, logging in with credentials");
-            login(client.clone(), username, password).await?;
-            tracing::info!("Saving session");
-            save_session(client).await?;
-        }
-    }
+    let user_session = login(client.clone(), username, password).await?;
+    let session = Session::new(user_session, client_session);
+    save_session(&session)?;
 
     Ok(())
 }
@@ -33,51 +25,39 @@ pub async fn login(
     client: Client,
     username: String,
     password: String,
-) -> Result<(), matrix_sdk::Error> {
-    client
-        .matrix_auth()
+) -> Result<MatrixSession, matrix_sdk::Error> {
+    let matrix_auth = client.matrix_auth();
+
+    tracing::info!("Logging in with credentials");
+    matrix_auth
         .login_username(&username, &password)
         .initial_device_display_name("Opie for desktop")
         .await?;
 
-    Ok(())
-}
-
-pub enum RestoreStatus {
-    Restored,
-    NoSession,
+    let user_session = matrix_auth.session().unwrap();
+    Ok(user_session)
 }
 
 /// Restores a session from disk if it exists. Will not error if no session is found, as this is
 /// expected for first-time users.
-pub async fn restore_session(client: Client) -> Result<RestoreStatus, matrix_sdk::Error> {
+pub async fn restore_session() -> Result<Option<Session>, Error> {
+    tracing::info!("Restoring session");
     let session_path = session_file();
     if !session_path.exists() {
         tracing::info!("No session file found, returning");
-        // No session file found, likely because the user has not logged in before.
-        return Ok(RestoreStatus::NoSession);
+        return Ok(None);
     }
 
     let serialized_session = std::fs::read_to_string(&session_path)?;
-    let session: MatrixSession = serde_json::from_str(&serialized_session)?;
-    tracing::info!("Session restored from file: {:?}", session);
-    client.restore_session(session).await?;
+    let session: Session = serde_json::from_str(&serialized_session)?;
+    tracing::info!("Session restored from file");
 
-    Ok(RestoreStatus::Restored)
+    Ok(Some(session))
 }
 
 /// Stores the current session to disk for future use. If no session exists, this is a no-op.
-pub async fn save_session(client: Client) -> Result<(), matrix_sdk::Error> {
-    let Some(session) = client.session() else {
-        tracing::info!("No session found, not saving");
-        return Ok(());
-    };
-
-    let AuthSession::Matrix(session) = session else {
-        // This should never happen, as we're only using Matrix authentication.
-        panic!("Unexpected OAuth 2.0 session");
-    };
-
+pub fn save_session(session: &Session) -> Result<(), matrix_sdk::Error> {
+    tracing::info!("Saving session");
     let serialized_session = serde_json::to_string(&session)?;
     let session_path = session_file();
     std::fs::write(session_path, serialized_session)?;
@@ -91,5 +71,5 @@ pub fn is_authenticated(client: &Client) -> bool {
 }
 
 fn session_file() -> std::path::PathBuf {
-    session_path().join("session.json")
+    Session::path().join("session.json")
 }

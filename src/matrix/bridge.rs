@@ -2,11 +2,16 @@ use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Result;
 use iced::futures::{SinkExt, StreamExt, channel::mpsc};
-use matrix_sdk::{Client, config::SyncSettings, ruma::OwnedRoomId};
+use matrix_sdk::{
+    Client,
+    config::SyncSettings,
+    ruma::{OwnedRoomId, api::client::filter::FilterDefinition},
+};
 use thiserror::Error;
 
-use crate::matrix::services::{
-    self, RestoreStatus as SessionRestoreStatus, Room, TimelineUpdateEvent,
+use crate::matrix::{
+    services::{self, Room, TimelineUpdateEvent},
+    session::ClientSession,
 };
 
 const CHANNEL_SIZE: usize = 64;
@@ -14,14 +19,17 @@ const CHANNEL_SIZE: usize = 64;
 /// A bridge between the Matrix SDK and the rest of the application.
 #[derive(Clone)]
 pub struct Bridge {
+    /// The original Matrix client
     client: Client,
+    /// Map of active timeline tasks, where the key is the room ID.
     active_timelines: HashMap<OwnedRoomId, Arc<services::Timeline>>,
 }
 
 /// Events emitted by the Matrix bridge.
 #[derive(Debug, Clone)]
 pub enum Event {
-    /// The Matrix bridge has been initialized and is waiting for the homeserver name to be provided.
+    /// The Matrix bridge has been initialized and is waiting for either [`Action::CreateMatrixClient(homeserver)`](Action::CreateMatrixClient)
+    /// or [`Action::RestoreSession`](Action::RestoreSession) to proceed.
     Stale(mpsc::Sender<Action>),
     /// The Matrix client has been built and is ready to use.
     Ready,
@@ -42,8 +50,11 @@ pub enum Event {
 /// Actions (or commands) that can be sent to the Matrix bridge.
 #[derive(Debug)]
 pub enum Action {
-    /// Store the matrix server provider in the settings
-    CreateMatrixClient { server: String },
+    /// Create the matrix client with the given homeserver
+    CreateMatrixClient {
+        homeserver: String,
+        passphrase: String,
+    },
     /// Authenticates a user to the Matrix server.
     Authenticate { username: String, password: String },
     /// Attempt to restore a session from disk.
@@ -58,11 +69,14 @@ pub enum Action {
 
 /// Current state of the Matrix bridge.
 enum State {
-    /// The bridge is connected, but is waiting for the homeserver name to be provided.
-    WaitingForServerName,
+    /// The bridge channel has been created, but is waiting for the client to be created.
+    WaitingForClient,
     /// The bridge has been initialized and is ready to use.
-    Initialized(Bridge),
-    /// The user has been authenticated and the services have been initialized.
+    Initialized {
+        bridge: Bridge,
+        client_session: ClientSession,
+    },
+    /// The user is authenticated and can use the bridge freely.
     Authenticated(Bridge),
 }
 
@@ -71,21 +85,52 @@ pub type MatrixBridgeSender = mpsc::Sender<Action>;
 
 impl Bridge {
     /// Creates a new Matrix bridge.
-    pub async fn new(server: String) -> Result<Self, Error> {
-        let client = services::new_client(server).await.map_err(Arc::new)?;
+    pub async fn new(
+        homeserver: String,
+        passphrase: String,
+    ) -> Result<(Self, ClientSession), Error> {
+        let (client, client_session) = services::new_client(homeserver, passphrase)
+            .await
+            .map_err(Arc::new)?;
 
-        Ok(Self {
+        Ok((Self::with_client(client), client_session))
+    }
+
+    /// Creates a new bridge using the provided client.
+    pub fn with_client(client: Client) -> Self {
+        Self {
             client,
             active_timelines: HashMap::new(),
-        })
+        }
+    }
+
+    /// Restores a session from disk if it exists.
+    pub async fn restore_session() -> Result<Option<Self>, Error> {
+        let session = services::restore_session().await.map_err(Arc::new)?;
+
+        match session {
+            None => Ok(None),
+            Some(session) => {
+                let client = services::new_client_with_session(session)
+                    .await
+                    .map_err(Arc::new)?;
+
+                Ok(Some(Self::with_client(client)))
+            }
+        }
     }
 
     /// Authenticates the user with the Matrix server.
     ///
     /// Authentication will restore a session if it exists, or log in with provided credentials,
     /// saving the session for future use.
-    pub async fn authenticate(&self, username: String, password: String) -> Result<(), Error> {
-        services::authenticate(self.client(), username, password)
+    pub async fn authenticate(
+        &self,
+        username: String,
+        password: String,
+        client_session: ClientSession,
+    ) -> Result<(), Error> {
+        services::authenticate(self.client(), username, password, client_session)
             .await
             .map_err(Arc::new)?;
 
@@ -95,20 +140,14 @@ impl Bridge {
     /// Synchronize the client’s state with the latest state on the server.
     pub async fn sync_once(&self) -> Result<(), Error> {
         tracing::info!("Syncing the client once");
-        let sync_settings = SyncSettings::default();
+        let sync_settings = self.sync_settings_with_lazy_loading();
+
         self.client()
             .sync_once(sync_settings)
             .await
             .map_err(Arc::new)?;
 
         Ok(())
-    }
-
-    /// Restores a session from disk if it exists.
-    pub async fn restore_session(&self) -> Result<SessionRestoreStatus, Error> {
-        services::restore_session(self.client())
-            .await
-            .map_err(|error| Arc::new(error).into())
     }
 
     /// Returns a list of the rooms that the user has joined.
@@ -128,10 +167,11 @@ impl Bridge {
     /// Spawns a task that syncs the client in the background. If you wish to sync the client once, use [`sync_once`](Self::sync_once) instead.
     pub fn start_sync(&self) {
         let client = self.client();
+        let sync_settings = self.sync_settings_with_lazy_loading();
 
         tracing::info!("Starting Matrix client sync task");
         tokio::spawn(async move {
-            if let Err(error) = client.sync(SyncSettings::default()).await {
+            if let Err(error) = client.sync(sync_settings).await {
                 tracing::error!("Error during sync: {:?}", error);
             }
         });
@@ -174,12 +214,20 @@ impl Bridge {
             );
         }
     }
+
+    /// Return a `SyncSettings` struct with room members lazy-loading,
+    /// it will speed up the initial sync a lot with accounts in lots of rooms.
+    /// See <https://spec.matrix.org/v1.6/client-server-api/#lazy-loading-room-members>.
+    fn sync_settings_with_lazy_loading(&self) -> SyncSettings {
+        let filter = FilterDefinition::with_lazy_loading();
+        SyncSettings::default().filter(filter.into())
+    }
 }
 
 #[derive(Error, Debug, Clone)]
 pub enum Error {
     #[error("Failed to build the Matrix client: {0}")]
-    ClientBuildError(#[from] Arc<matrix_sdk::ClientBuildError>),
+    ClientBuildError(#[from] Arc<crate::matrix::services::ClientBuildErrorKind>),
 
     #[error("An error occurred in the Matrix SDK: {0}")]
     SdkError(#[from] Arc<matrix_sdk::Error>),
@@ -205,7 +253,7 @@ impl From<Error> for Event {
 
 async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
     tracing::info!("Subscription handler started");
-    let mut state = State::WaitingForServerName;
+    let mut state = State::WaitingForClient;
     let (sender, mut receiver) = mpsc::channel(CHANNEL_SIZE);
     send(Event::Stale(sender), &mut emitter).await;
 
@@ -213,11 +261,17 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
         let action = receiver.select_next_some().await;
         tracing::info!("Received action: {}", action);
         match action {
-            Action::CreateMatrixClient { server } => match &state {
-                State::WaitingForServerName | State::Initialized(_) => {
-                    let event = match Bridge::new(server).await {
-                        Ok(bridge) => {
-                            state = State::Initialized(bridge);
+            Action::CreateMatrixClient {
+                homeserver,
+                passphrase,
+            } => match &state {
+                State::WaitingForClient | State::Initialized { .. } => {
+                    let event = match Bridge::new(homeserver, passphrase).await {
+                        Ok((bridge, client_session)) => {
+                            state = State::Initialized {
+                                bridge,
+                                client_session,
+                            };
                             Event::Ready
                         }
                         Err(error) => Event::Error(error),
@@ -228,30 +282,44 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
                 _ => invalid_action(&mut emitter).await,
             },
             Action::Authenticate { username, password } => match &state {
-                State::Initialized(bridge) => match bridge.authenticate(username, password).await {
-                    Ok(_) => {
-                        bridge.start_sync();
-                        state = State::Authenticated(bridge.clone());
-                        send(Event::Authenticated, &mut emitter).await
+                State::Initialized {
+                    bridge,
+                    client_session,
+                } => {
+                    match bridge
+                        .authenticate(username, password, client_session.clone())
+                        .await
+                    {
+                        Ok(_) => {
+                            send(Event::Syncing, &mut emitter).await;
+                            match bridge.sync_once().await {
+                                Ok(_) => {}
+                                Err(error) => {
+                                    send(Event::Error(error), &mut emitter).await;
+                                    continue;
+                                }
+                            }
+
+                            bridge.start_sync();
+                            state = State::Authenticated(bridge.clone());
+                            send(Event::Authenticated, &mut emitter).await
+                        }
+                        Err(error) => send(Event::Error(error), &mut emitter).await,
                     }
-                    Err(error) => send(Event::Error(error), &mut emitter).await,
-                },
-                State::WaitingForServerName | State::Authenticated { .. } => {
+                }
+                State::WaitingForClient | State::Authenticated { .. } => {
                     invalid_action(&mut emitter).await
                 }
             },
             Action::RestoreSession => match &state {
-                State::Initialized(bridge) => match bridge.restore_session().await {
-                    Ok(status) => {
-                        let event = match status {
-                            SessionRestoreStatus::Restored => {
-                                bridge.start_sync();
-                                state = State::Authenticated(bridge.clone());
-                                Event::Authenticated
-                            }
-                            SessionRestoreStatus::NoSession => Event::SessionRestoreFailed,
-                        };
-                        send(event, &mut emitter).await
+                State::WaitingForClient => match Bridge::restore_session().await {
+                    Ok(Some(bridge)) => {
+                        bridge.start_sync();
+                        state = State::Authenticated(bridge.clone());
+                        send(Event::Authenticated, &mut emitter).await;
+                    }
+                    Ok(None) => {
+                        send(Event::SessionRestoreFailed, &mut emitter).await;
                     }
                     Err(error) => send(Event::Error(error), &mut emitter).await,
                 },
@@ -268,7 +336,7 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
                     };
                     send(Event::RoomList(rooms), &mut emitter).await;
                 }
-                State::Initialized(_) | State::WaitingForServerName => {
+                State::Initialized { .. } | State::WaitingForClient => {
                     unauthenticated(&mut emitter).await
                 }
             },
@@ -289,7 +357,7 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
                         }
                     });
                 }
-                State::Initialized(_) | State::WaitingForServerName => {
+                State::Initialized { .. } | State::WaitingForClient => {
                     unauthenticated(&mut emitter).await
                 }
             },
@@ -302,7 +370,7 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
                     )
                     .await;
                 }
-                State::Initialized(_) | State::WaitingForServerName => {
+                State::Initialized { .. } | State::WaitingForClient => {
                     unauthenticated(&mut emitter).await
                 }
             },
@@ -356,8 +424,8 @@ impl std::fmt::Display for Event {
 impl std::fmt::Display for Action {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Action::CreateMatrixClient { server } => {
-                write!(f, "CreateMatrixClient {{ server: {} }}", server)
+            Action::CreateMatrixClient { homeserver, .. } => {
+                write!(f, "CreateMatrixClient {{ homeserver: {}, .. }}", homeserver,)
             }
             Action::Authenticate { username, .. } => {
                 write!(f, "Authenticate {{ username: {} }}", username)

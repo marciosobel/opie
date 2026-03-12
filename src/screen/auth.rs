@@ -9,13 +9,13 @@ use crate::{Action, app::AppError};
 pub struct State {
     username: String,
     password: String,
-    server: String,
+    homeserver: String,
 }
 
 #[derive(Debug, Clone)]
 pub enum Instruction {
     Authenticate {
-        server: String,
+        homeserver: String,
         username: String,
         password: String,
     },
@@ -34,7 +34,7 @@ impl State {
         Self {
             username: String::new(),
             password: String::new(),
-            server: String::from("matrix.org"),
+            homeserver: String::from("matrix.org"),
         }
     }
 
@@ -49,12 +49,12 @@ impl State {
                 Action::none()
             }
             Message::ServerChanged(server) => {
-                self.server = server;
+                self.homeserver = server;
                 Action::none()
             }
             Message::Auth => {
                 let instruction = Instruction::Authenticate {
-                    server: self.server.clone(),
+                    homeserver: self.homeserver.clone(),
                     username: self.username.clone(),
                     password: self.password.clone(),
                 };
@@ -66,9 +66,10 @@ impl State {
 
     pub fn view(&self, error: Option<&AppError>) -> Element<'_, Message> {
         let username_input =
-            text_input("E-email", &self.username).on_input(Message::UsernameChanged);
+            text_input("Username", &self.username).on_input(Message::UsernameChanged);
 
-        let provider_input = text_input("Provider", &self.server).on_input(Message::ServerChanged);
+        let provider_input =
+            text_input("Provider", &self.homeserver).on_input(Message::ServerChanged);
 
         let password_input = text_input("Password", &self.password)
             .secure(true)

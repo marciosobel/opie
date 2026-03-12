@@ -2,21 +2,18 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Settings {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    server: Option<String>,
-}
+pub struct Settings {}
 
 impl Settings {
     pub fn new() -> Self {
-        Self { server: None }
+        Self {}
     }
 
     pub fn load() -> Result<Self> {
         let path = Self::path();
         if !path.exists() {
             let settings = Self::new();
-            settings.save()?;
+            settings.save()?; // Write the settings file for the first time
             return Ok(settings);
         }
 
@@ -45,14 +42,5 @@ impl Settings {
 
         std::fs::write(path, serialized)?;
         Ok(())
-    }
-
-    pub fn server(&self) -> Option<String> {
-        self.server.clone()
-    }
-
-    pub fn set_server(&mut self, server: String) -> &mut Self {
-        self.server = Some(server);
-        self
     }
 }

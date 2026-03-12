@@ -5,6 +5,7 @@ use iced::{
     widget::{center, column, operation::focus_next, text},
     window,
 };
+use rand::{RngExt, distr::Alphanumeric};
 use screen_macro::screen;
 use thiserror::Error;
 
@@ -21,7 +22,7 @@ pub struct App {
     bridge: Option<MatrixBridgeSender>,
     error: Arc<Option<AppError>>,
     screen: Screen,
-    settings: Settings,
+    // settings: Settings,
 }
 
 #[derive(Debug, Clone)]
@@ -65,14 +66,14 @@ impl App {
         });
         tasks.push(open.map(Message::WindowOpened));
 
-        let settings = Settings::load().expect("Failed to load settings");
+        let _settings = Settings::load().expect("Failed to load settings");
 
         (
             Self {
                 bridge: None,
                 screen: Screen::Loading("Initializing app...".to_string()),
                 error: Arc::new(None),
-                settings,
+                // settings,
             },
             Task::batch(tasks),
         )
@@ -151,7 +152,7 @@ impl App {
         match instruction {
             Instruction::Auth(instruction) => match instruction {
                 auth::Instruction::Authenticate {
-                    server,
+                    homeserver,
                     username,
                     password,
                 } => {
@@ -163,7 +164,19 @@ impl App {
                     tracing::info!(
                         "Sending CreateMatrixClient and Authenticate actions to the bridge"
                     );
-                    _ = bridge.try_send(MatrixAction::CreateMatrixClient { server });
+
+                    let mut rng = rand::rng();
+                    let passphrase: String = (&mut rng)
+                        .sample_iter(Alphanumeric)
+                        .take(32)
+                        .map(char::from)
+                        .collect();
+
+                    _ = bridge.try_send(MatrixAction::CreateMatrixClient {
+                        homeserver,
+                        passphrase,
+                    });
+
                     _ = bridge.try_send(MatrixAction::Authenticate { username, password });
 
                     Task::none()
@@ -195,16 +208,6 @@ impl App {
                 tracing::info!("Matrix bridge stored in the app state");
 
                 self.screen = Screen::Loading("Checking session...".to_string());
-                let Some(server) = self.settings.server() else {
-                    tracing::info!("No server found in settings, showing auth screen");
-                    self.screen = Screen::Auth(auth::State::new());
-                    return Task::none();
-                };
-
-                tracing::info!("Homeserver found in settings, trying to restore session");
-
-                self.screen = Screen::Loading("Creating matrix client...".to_string());
-                _ = bridge.try_send(MatrixAction::CreateMatrixClient { server });
                 _ = bridge.try_send(MatrixAction::RestoreSession);
             }
             matrix::bridge::Event::Error(error) => {
