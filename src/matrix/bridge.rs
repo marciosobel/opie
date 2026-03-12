@@ -260,73 +260,21 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
     loop {
         let action = receiver.select_next_some().await;
         tracing::info!("Received action: {}", action);
-        match action {
-            Action::CreateMatrixClient {
-                homeserver,
-                passphrase,
-            } => match &state {
-                State::WaitingForClient | State::Initialized { .. } => {
-                    let event = match Bridge::new(homeserver, passphrase).await {
-                        Ok((bridge, client_session)) => {
-                            state = State::Initialized {
-                                bridge,
-                                client_session,
-                            };
-                            Event::Ready
-                        }
-                        Err(error) => Event::Error(error),
-                    };
+        match &mut state {
+            State::WaitingForClient => {
+                state
+                    .handle_waiting_for_client_action(action, &mut emitter)
+                    .await;
+            }
+            State::Initialized { .. } => {
+                state.handle_initialized_action(action, &mut emitter).await;
+            }
+            State::Authenticated(bridge) => match action {
+                Action::CreateMatrixClient { .. }
+                | Action::Authenticate { .. }
+                | Action::RestoreSession => invalid_action(&mut emitter).await,
 
-                    send(event, &mut emitter).await;
-                }
-                _ => invalid_action(&mut emitter).await,
-            },
-            Action::Authenticate { username, password } => match &state {
-                State::Initialized {
-                    bridge,
-                    client_session,
-                } => {
-                    match bridge
-                        .authenticate(username, password, client_session.clone())
-                        .await
-                    {
-                        Ok(_) => {
-                            send(Event::Syncing, &mut emitter).await;
-                            match bridge.sync_once().await {
-                                Ok(_) => {}
-                                Err(error) => {
-                                    send(Event::Error(error), &mut emitter).await;
-                                    continue;
-                                }
-                            }
-
-                            bridge.start_sync();
-                            state = State::Authenticated(bridge.clone());
-                            send(Event::Authenticated, &mut emitter).await
-                        }
-                        Err(error) => send(Event::Error(error), &mut emitter).await,
-                    }
-                }
-                State::WaitingForClient | State::Authenticated { .. } => {
-                    invalid_action(&mut emitter).await
-                }
-            },
-            Action::RestoreSession => match &state {
-                State::WaitingForClient => match Bridge::restore_session().await {
-                    Ok(Some(bridge)) => {
-                        bridge.start_sync();
-                        state = State::Authenticated(bridge.clone());
-                        send(Event::Authenticated, &mut emitter).await;
-                    }
-                    Ok(None) => {
-                        send(Event::SessionRestoreFailed, &mut emitter).await;
-                    }
-                    Err(error) => send(Event::Error(error), &mut emitter).await,
-                },
-                _ => invalid_action(&mut emitter).await,
-            },
-            Action::ListAllRooms => match &state {
-                State::Authenticated(bridge) => {
+                Action::ListAllRooms => {
                     let rooms = match bridge.get_joined_rooms().await {
                         Ok(rooms) => rooms,
                         Err(error) => {
@@ -336,12 +284,7 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
                     };
                     send(Event::RoomList(rooms), &mut emitter).await;
                 }
-                State::Initialized { .. } | State::WaitingForClient => {
-                    unauthenticated(&mut emitter).await
-                }
-            },
-            Action::GetTimeline(room_id) => match &mut state {
-                State::Authenticated(bridge) => {
+                Action::GetTimeline(room_id) => {
                     let mut timeline_event_rx = match bridge.room_timeline(room_id.clone()).await {
                         Ok(tuple) => tuple,
                         Err(error) => {
@@ -357,23 +300,118 @@ async fn subscription_handler(mut emitter: mpsc::Sender<Event>) {
                         }
                     });
                 }
-                State::Initialized { .. } | State::WaitingForClient => {
-                    unauthenticated(&mut emitter).await
-                }
-            },
-            Action::CloseTimeline(owned_room_id) => match &state {
-                State::Authenticated(bridge) => {
-                    bridge.close_timeline(owned_room_id.clone()).await;
+                Action::CloseTimeline(room_id) => {
+                    bridge.close_timeline(room_id.clone()).await;
                     send(
-                        Event::TimelineEvent(TimelineUpdateEvent::Closed(owned_room_id)),
+                        Event::TimelineEvent(TimelineUpdateEvent::Closed(room_id)),
                         &mut emitter,
                     )
                     .await;
                 }
-                State::Initialized { .. } | State::WaitingForClient => {
-                    unauthenticated(&mut emitter).await
-                }
             },
+        }
+    }
+}
+
+impl State {
+    /// Handles actions received while in the [`WaitingForClient`](State::WaitingForClient) state.
+    async fn handle_waiting_for_client_action(
+        &mut self,
+        action: Action,
+        emitter: &mut mpsc::Sender<Event>,
+    ) {
+        let Self::WaitingForClient = self else {
+            tracing::error!("Invalid state for handle_waiting_for_client_action");
+            return;
+        };
+
+        match action {
+            Action::CreateMatrixClient {
+                homeserver,
+                passphrase,
+            } => self.create_bridge(emitter, homeserver, passphrase).await,
+            Action::RestoreSession => self.restore_session(emitter).await,
+            Action::Authenticate { .. } => invalid_action(emitter).await,
+            _ => unauthenticated(emitter).await,
+        }
+    }
+
+    /// Handles actions received while in the [`Initialized`](State::Initialized) state.
+    async fn handle_initialized_action(
+        &mut self,
+        action: Action,
+        emitter: &mut mpsc::Sender<Event>,
+    ) {
+        let Self::Initialized {
+            bridge,
+            client_session,
+        } = self
+        else {
+            tracing::error!("Invalid state for handle_initialized_action");
+            return;
+        };
+
+        match action {
+            Action::CreateMatrixClient {
+                homeserver,
+                passphrase,
+            } => self.create_bridge(emitter, homeserver, passphrase).await,
+            Action::Authenticate { username, password } => {
+                match bridge
+                    .authenticate(username, password, client_session.clone())
+                    .await
+                {
+                    Ok(_) => {
+                        send(Event::Syncing, emitter).await;
+                        match bridge.sync_once().await {
+                            Ok(_) => {}
+                            Err(error) => {
+                                send(Event::Error(error), emitter).await;
+                                return;
+                            }
+                        }
+
+                        bridge.start_sync();
+                        *self = State::Authenticated(bridge.clone());
+                        send(Event::Authenticated, emitter).await
+                    }
+                    Err(error) => send(Event::Error(error), emitter).await,
+                }
+            }
+            Action::RestoreSession => self.restore_session(emitter).await,
+            _ => unauthenticated(emitter).await,
+        }
+    }
+
+    async fn create_bridge(
+        &mut self,
+        emitter: &mut mpsc::Sender<Event>,
+        homeserver: String,
+        passphrase: String,
+    ) {
+        match Bridge::new(homeserver, passphrase).await {
+            Ok((bridge, client_session)) => {
+                *self = State::Initialized {
+                    bridge,
+                    client_session,
+                };
+                send(Event::Ready, emitter).await;
+            }
+            Err(error) => send(Event::Error(error), emitter).await,
+        }
+    }
+
+    async fn restore_session(&mut self, emitter: &mut mpsc::Sender<Event>) {
+        match Bridge::restore_session().await {
+            Ok(Some(bridge)) => {
+                bridge.start_sync();
+                *self = State::Authenticated(bridge.clone());
+                send(Event::Authenticated, emitter).await;
+            }
+            Ok(None) => {
+                send(Event::SessionRestoreFailed, emitter).await;
+            }
+            Err(error) => send(Event::Error(error), emitter).await,
         }
     }
 }
