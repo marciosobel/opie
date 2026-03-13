@@ -12,13 +12,13 @@ use crate::{
     Action, Settings,
     matrix::{
         self,
-        bridge::{Action as MatrixAction, MatrixBridgeSender},
+        bridge::{Action as MatrixAction, Bridge},
     },
-    screen::{auth, main},
+    screen::{auth, home},
 };
 
 pub struct App {
-    bridge: Option<MatrixBridgeSender>,
+    bridge: Option<Bridge>,
     error: Arc<Option<AppError>>,
     screen: Screen,
     // settings: Settings,
@@ -39,20 +39,20 @@ pub enum Message {
     /// Messages from the authentication screen
     Auth(auth::Message),
     /// Messages from the main screen
-    Main(main::Message),
+    Home(home::Message),
 }
 
 #[derive(Debug, Clone)]
 pub enum Screen {
     Auth(auth::State),
-    Main(main::State),
+    Home(home::State),
     Loading(String),
 }
 
 #[derive(Debug, Clone)]
 enum Instruction {
     Auth(auth::Instruction),
-    Main(main::Instruction),
+    Main(home::Instruction),
 }
 
 impl App {
@@ -106,14 +106,14 @@ impl App {
 
                 self.handle_action(action)
             }
-            Message::Main(message) => {
-                let Screen::Main(screen) = &mut self.screen else {
+            Message::Home(message) => {
+                let Screen::Home(screen) = &mut self.screen else {
                     return Task::none();
                 };
 
                 let action = screen
                     .update(message)
-                    .map(Message::Main)
+                    .map(Message::Home)
                     .map_instruction(Instruction::Main);
 
                 self.handle_action(action)
@@ -124,7 +124,7 @@ impl App {
     pub fn view(&self, _: window::Id) -> iced::Element<'_, Message> {
         match &self.screen {
             Screen::Auth(screen) => screen.view(self.error()).map(Message::Auth),
-            Screen::Main(screen) => screen.view().map(Message::Main),
+            Screen::Home(screen) => screen.view().map(Message::Home),
             Screen::Loading(msg) => center(
                 column![text("Loading...").size(24), text(msg)]
                     .spacing(10)
@@ -176,12 +176,12 @@ impl App {
                         .map(char::from)
                         .collect();
 
-                    _ = bridge.try_send(MatrixAction::CreateMatrixClient {
-                        homeserver,
-                        passphrase,
-                    });
-
-                    _ = bridge.try_send(MatrixAction::Authenticate { username, password });
+                    bridge
+                        .send(MatrixAction::CreateMatrixClient {
+                            homeserver,
+                            passphrase,
+                        })
+                        .send(MatrixAction::Authenticate { username, password });
 
                     Task::none()
                 }
@@ -196,15 +196,15 @@ impl App {
 
     fn handle_matrix_event(&mut self, event: matrix::bridge::Event) -> Task<Message> {
         match &mut self.screen {
-            Screen::Main(state) => {
+            Screen::Home(state) => {
                 let action = state
-                    .update(main::Message::MatrixEvent(event))
-                    .map(Message::Main)
+                    .update(home::Message::MatrixEvent(event))
+                    .map(Message::Home)
                     .map_instruction(Instruction::Main);
                 return self.handle_action(action);
             }
             _ => {}
-        }
+        };
 
         match event {
             matrix::bridge::Event::Stale(mut bridge) => {
@@ -212,21 +212,20 @@ impl App {
                 tracing::info!("Matrix bridge stored in the app state");
 
                 self.screen = Screen::Loading("Checking session...".to_string());
-                _ = bridge.try_send(MatrixAction::RestoreSession);
+                bridge.send(MatrixAction::RestoreSession);
             }
             matrix::bridge::Event::Error(error) => {
                 tracing::error!("Received error event from matrix bridge: {:?}", error);
                 return Task::done(Message::Error(error.into()));
             }
             matrix::bridge::Event::Authenticated => {
-                let Some(bridge) = self.bridge.clone() else {
+                if let Some(bridge) = self.bridge.clone() {
+                    tracing::info!("Authentication successful, showing the main screen");
+                    let state = home::State::new(bridge);
+                    self.screen = Screen::Home(state);
+                } else {
                     tracing::error!("Received Authenticated event without a bridge");
-                    return Task::none();
-                };
-
-                tracing::info!("Authentication successful, showing the main screen");
-                let state = main::State::new(bridge);
-                self.screen = Screen::Main(state);
+                }
             }
             matrix::bridge::Event::Syncing => {
                 self.screen = Screen::Loading("Syncing the client...".to_string());
@@ -241,7 +240,7 @@ impl App {
             }
             matrix::bridge::Event::RoomList(_) => {}
             matrix::bridge::Event::TimelineEvent(_) => {}
-        }
+        };
 
         Task::none()
     }

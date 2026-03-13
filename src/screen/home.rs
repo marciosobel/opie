@@ -11,7 +11,7 @@ use crate::{
     Action,
     components::collapsible,
     matrix::{
-        bridge::{Action as MatrixAction, Event as MatrixEvent, MatrixBridgeSender},
+        bridge::{Action as MatrixAction, Bridge, Event as MatrixEvent},
         services::{Room, TimelineUpdateEvent},
     },
 };
@@ -28,7 +28,7 @@ const SIDEBAR_ROOM_AVATAR_SIZE: u32 = 20;
 
 #[derive(Debug, Clone)]
 pub struct State {
-    bridge: MatrixBridgeSender,
+    bridge: Bridge,
     rooms: Arc<HashMap<OwnedRoomId, Room>>,
     collapsible_spaces: HashMap<OwnedRoomId, bool>,
     collapsible_dms_open: bool,
@@ -52,8 +52,8 @@ pub enum Message {
 pub enum Instruction {}
 
 impl State {
-    pub fn new(mut bridge: MatrixBridgeSender) -> Self {
-        _ = bridge.try_send(MatrixAction::ListAllRooms);
+    pub fn new(mut bridge: Bridge) -> Self {
+        bridge.send(MatrixAction::ListAllRooms);
 
         Self {
             bridge,
@@ -86,14 +86,13 @@ impl State {
                         tracing::info!(
                             "Closing the current timeline before requesting another one"
                         );
-                        _ = self
-                            .bridge
-                            .try_send(MatrixAction::CloseTimeline(focused_room_id.clone()));
+                        self.bridge
+                            .send(MatrixAction::CloseTimeline(focused_room_id.clone()));
                     }
 
                     self.focused_room = Some(id.clone());
                     tracing::info!("Focusing room with id {}", id);
-                    _ = self.bridge.try_send(MatrixAction::GetTimeline(id));
+                    self.bridge.send(MatrixAction::GetTimeline(id));
                 }
             },
             Message::LoadRoomAvatar(id) => {
