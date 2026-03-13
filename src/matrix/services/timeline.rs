@@ -18,7 +18,7 @@ pub async fn timeline(
     let room_id = room.room_id().to_owned();
     let timeline = Arc::new(room.timeline().await?);
     let inner = timeline.clone();
-    let (tx, rx) = mpsc::channel(32);
+    let (tx, rx) = mpsc::channel(8);
 
     let (items, mut stream) = timeline.subscribe().await;
 
