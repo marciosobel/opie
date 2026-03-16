@@ -82,7 +82,6 @@ impl Timeline {
     }
 
     pub async fn close(&self) {
-        tracing::info!("Closing timeline for room {}", self.room_id());
         self.task.abort();
         _ = self
             .tx

@@ -25,7 +25,7 @@ pub enum Event {
     /// The client is syncronizing with the server, which may take some time. The client is not ready to use until the sync is complete.
     Syncing,
     /// A list of rooms that the user is a member of.
-    RoomList(Arc<HashMap<OwnedRoomId, Room>>),
+    RoomList(HashMap<OwnedRoomId, Arc<Room>>),
     /// The timeline for a room has been updated with new events or changes to existing events. The diff contains the changes that were made to the timeline.
     TimelineEvent(TimelineUpdateEvent),
 }

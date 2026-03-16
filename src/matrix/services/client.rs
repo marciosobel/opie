@@ -3,8 +3,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use matrix_sdk::{
     Client, ClientBuildError, Error, SqliteCryptoStore, SqliteEventCacheStore, SqliteStateStore,
-    ThreadingSupport, encryption::EncryptionSettings, search_index::SearchIndexStoreKind,
-    store::StoreConfig,
+    ThreadingSupport, encryption::EncryptionSettings, store::StoreConfig,
 };
 use thiserror::Error;
 
@@ -72,11 +71,6 @@ async fn build_client(
             matrix_sdk::encryption::BackupDownloadStrategy::AfterDecryptionFailure,
     };
 
-    let search_index_store = SearchIndexStoreKind::EncryptedDirectory(
-        session_path.join("index_data"),
-        passphrase.clone(),
-    );
-
     let threading_support = ThreadingSupport::Enabled {
         with_subscriptions: true,
     };
@@ -85,7 +79,6 @@ async fn build_client(
         .store_config(store_config)
         .server_name_or_homeserver_url(homeserver)
         .with_encryption_settings(encryption_settings)
-        .search_index_store(search_index_store)
         .with_threading_support(threading_support)
         .with_enable_share_history_on_invite(true);
 

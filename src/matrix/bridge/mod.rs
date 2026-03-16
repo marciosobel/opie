@@ -105,12 +105,17 @@ impl ClientWrapper {
     }
 
     /// Returns a list of the rooms that the user has joined.
-    pub(super) async fn get_joined_rooms(&self) -> Result<Arc<HashMap<OwnedRoomId, Room>>, Error> {
+    pub(super) async fn get_joined_rooms(&self) -> Result<HashMap<OwnedRoomId, Arc<Room>>, Error> {
         let rooms = services::list_joined_rooms(self.inner())
             .await
             .map_err(Arc::new)?;
 
-        Ok(Arc::new(rooms))
+        let rooms = rooms
+            .into_iter()
+            .map(|(id, room)| (id, Arc::new(room)))
+            .collect();
+
+        Ok(rooms)
     }
 
     /// Gets a reference to the underlying Matrix SDK client.
@@ -144,12 +149,8 @@ impl ClientWrapper {
         let (timeline, rx) = services::timeline(room).await.map_err(Arc::new)?;
 
         let old_timeline = self.active_timelines.insert(id.clone(), Arc::new(timeline));
-
-        // drop the old timeline, preventing duplicate events.
-        {
-            if old_timeline.is_some() {
-                tracing::info!("Old timeline handler found for room {}", &id);
-            }
+        if let Some(old_timeline) = old_timeline {
+            old_timeline.close().await;
         }
 
         Ok(rx)
