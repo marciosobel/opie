@@ -5,9 +5,9 @@ use super::Channel;
 use super::ClientWrapper;
 use super::Event;
 
+mod authenticated;
 mod initialized;
 mod waiting_for_client;
-mod authenticated;
 
 /// Current state of the Matrix bridge.
 pub(super) enum State {
@@ -69,7 +69,16 @@ pub(self) async fn restore_session(channel: &mut Channel) -> Option<State> {
     match ClientWrapper::restore_session().await {
         Ok(Some(client)) => {
             client.start_sync();
-            channel.send(Event::Authenticated).await;
+
+            let user_info = match client.user_info().await {
+                Ok(user_info) => user_info,
+                Err(error) => {
+                    channel.send(error).await;
+                    return None;
+                }
+            };
+
+            channel.send(Event::Authenticated(user_info)).await;
             Some(State::Authenticated(client))
         }
         Ok(None) => {

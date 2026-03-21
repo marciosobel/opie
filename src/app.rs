@@ -218,10 +218,10 @@ impl App {
                 tracing::error!("Received error event from matrix bridge: {:?}", error);
                 return Task::done(Message::Error(error.into()));
             }
-            matrix::bridge::Event::Authenticated => {
+            matrix::bridge::Event::Authenticated(user_info) => {
                 if let Some(bridge) = self.bridge.clone() {
                     tracing::info!("Authentication successful, showing the main screen");
-                    let state = home::State::new(bridge);
+                    let state = home::State::new(bridge, user_info);
                     self.screen = Screen::Home(state);
                 } else {
                     tracing::error!("Received Authenticated event without a bridge");

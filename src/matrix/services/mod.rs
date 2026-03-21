@@ -9,3 +9,6 @@ pub use room::*;
 
 mod timeline;
 pub use timeline::*;
+
+mod user;
+pub use user::*;

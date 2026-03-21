@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use iced::{
-    Element, Padding, Task,
+    Element, Task,
     widget::{center, column, image, row, text},
 };
 use matrix_sdk::ruma::OwnedRoomId;
@@ -11,7 +11,7 @@ use crate::{
     Action,
     matrix::{
         bridge::{Action as MatrixAction, Bridge, Event as MatrixEvent},
-        services::{Room, TimelineUpdateEvent},
+        services::{Room, TimelineUpdateEvent, UserInfo},
     },
 };
 
@@ -19,17 +19,11 @@ mod sidebar;
 
 const DEPTH_PADDING: f32 = 24.0;
 const HORIZONTAL_PADDING: f32 = 10.0;
-const SIDEBAR_ROOM_PADDING: Padding = Padding {
-    left: HORIZONTAL_PADDING,
-    right: HORIZONTAL_PADDING,
-    top: 2.5,
-    bottom: 2.5,
-};
-const SIDEBAR_ROOM_AVATAR_SIZE: u32 = 20;
 
 #[derive(Debug, Clone)]
 pub struct State {
     bridge: Bridge,
+    user: User,
     rooms: HashMap<OwnedRoomId, Arc<Room>>,
     collapsible_spaces: HashMap<OwnedRoomId, bool>,
     collapsible_dms_open: bool,
@@ -53,15 +47,40 @@ pub enum Message {
 #[derive(Debug, Clone)]
 pub enum Instruction {}
 
+#[derive(Debug, Clone)]
+struct User {
+    info: UserInfo,
+    avatar: Image,
+}
+
+impl std::ops::Deref for User {
+    type Target = UserInfo;
+
+    fn deref(&self) -> &Self::Target {
+        &self.info
+    }
+}
+
 impl State {
-    pub fn new(mut bridge: Bridge) -> Self {
+    pub fn new(mut bridge: Bridge, user_info: UserInfo) -> Self {
         bridge.send(MatrixAction::ListAllRooms);
+
+        let user_avatar = match user_info.avatar().cloned() {
+            Some(bytes) => Image::Ready(image::Handle::from_bytes(bytes)),
+            None => Image::None,
+        };
+
+        let user = User {
+            info: user_info,
+            avatar: user_avatar,
+        };
 
         Self {
             bridge,
+            user,
             rooms: HashMap::new(),
             collapsible_spaces: HashMap::new(),
-            collapsible_dms_open: true,
+            collapsible_dms_open: false,
             focused_room: None,
             room_avatar_cache: HashMap::new(),
             timelines: HashMap::new(),

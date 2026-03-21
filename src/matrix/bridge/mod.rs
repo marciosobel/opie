@@ -4,11 +4,12 @@ use anyhow::Result;
 use matrix_sdk::{
     Client,
     config::SyncSettings,
+    media::MediaFormat,
     ruma::{OwnedRoomId, api::client::filter::FilterDefinition},
 };
 
 use crate::matrix::{
-    services::{self, Room, TimelineUpdateEvent},
+    services::{self, Room, Timeline, TimelineUpdateEvent, UserInfo},
     session::ClientSession,
 };
 
@@ -34,7 +35,7 @@ pub struct ClientWrapper {
     /// The original Matrix client
     inner: Client,
     /// Map of active timeline tasks, where the key is the room ID.
-    active_timelines: HashMap<OwnedRoomId, Arc<services::Timeline>>,
+    active_timelines: HashMap<OwnedRoomId, Arc<Timeline>>,
 }
 
 impl ClientWrapper {
@@ -176,6 +177,20 @@ impl ClientWrapper {
     fn sync_settings_with_lazy_loading(&self) -> SyncSettings {
         let filter = FilterDefinition::with_lazy_loading();
         SyncSettings::default().filter(filter.into())
+    }
+
+    /// Fetches and returns info about the logged account.
+    async fn user_info(&self) -> Result<UserInfo, Error> {
+        let client = self.inner();
+        let account = client.account();
+        let display_name = account.get_display_name().await.map_err(Arc::new)?;
+        let id = client.user_id().ok_or(Error::NotAuthenticated)?.to_owned();
+        let avatar = account
+            .get_avatar(MediaFormat::File)
+            .await
+            .map_err(Arc::new)?;
+
+        Ok(UserInfo::new(id, display_name, avatar))
     }
 }
 

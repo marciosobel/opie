@@ -28,7 +28,16 @@ pub(super) async fn handle(
                     match client.sync_once().await {
                         Ok(_) => {
                             client.start_sync();
-                            channel.send(Event::Authenticated).await;
+
+                            let user_info = match client.user_info().await {
+                                Ok(user_info) => user_info,
+                                Err(error) => {
+                                    channel.send(error).await;
+                                    return None;
+                                }
+                            };
+
+                            channel.send(Event::Authenticated(user_info)).await;
                             Some(State::Authenticated(client.clone()))
                         }
                         Err(error) => {

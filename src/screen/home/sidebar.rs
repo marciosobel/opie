@@ -1,7 +1,4 @@
-use super::{
-    DEPTH_PADDING, HORIZONTAL_PADDING, Image, Message, SIDEBAR_ROOM_AVATAR_SIZE,
-    SIDEBAR_ROOM_PADDING,
-};
+use super::{DEPTH_PADDING, HORIZONTAL_PADDING, Image, Message};
 use iced::{
     Alignment, Color, ContentFit, Length, Padding, Theme,
     widget::{button, column, container, image, row, sensor, space, text},
@@ -11,11 +8,20 @@ use crate::{components::collapsible, matrix::services::Room};
 
 type Element<'a> = iced::Element<'a, Message>;
 
+const SIDEBAR_ROOM_PADDING: Padding = Padding {
+    left: HORIZONTAL_PADDING,
+    right: HORIZONTAL_PADDING,
+    top: 2.5,
+    bottom: 2.5,
+};
+const SIDEBAR_ROOM_AVATAR_SIZE: u32 = 20;
+const SIDEBAR_USER_AVATAR_SIZE: u32 = 40;
+
 impl super::State {
     pub fn sidebar(&self) -> Element<'_> {
-        let rooms = self.render_spaces();
+        let sidebar_column = column![self.spaces(), space::vertical(), self.user_info(),];
 
-        container(rooms)
+        container(sidebar_column)
             .style(|theme: &iced::Theme| {
                 let palette = theme.extended_palette();
                 container::Style::default()
@@ -27,9 +33,53 @@ impl super::State {
             .into()
     }
 
-    // fn user_info(&self) -> Element<'_> {}
+    fn user_info(&self) -> Element<'_> {
+        let avatar: Element<'_> = match &self.user.avatar {
+            Image::Ready(handle) => image(handle)
+                .width(SIDEBAR_USER_AVATAR_SIZE)
+                .height(SIDEBAR_USER_AVATAR_SIZE)
+                .border_radius(100)
+                .into(),
+            Image::None => {
+                let placeholder: Element<'_> = match self.user.display_name() {
+                    Some(name) if name.len() > 0 => {
+                        let first_letter = name.chars().next().unwrap();
+                        text(first_letter).size(16).into()
+                    }
+                    _ => space().into(),
+                };
 
-    fn render_space<'a>(&'a self, space: &'a Room, depth: u8) -> Element<'a> {
+                container(placeholder)
+                    .style(move |theme: &Theme| {
+                        let palette = theme.extended_palette();
+                        let mut style = container::Style::default();
+                        style.border = style.border.rounded(100);
+                        style
+                            .background(palette.background.base.color)
+                            .color(palette.background.base.text)
+                    })
+                    .center(SIDEBAR_USER_AVATAR_SIZE)
+                    .clip(true)
+                    .into()
+            }
+        };
+
+        let name = match &self.user.display_name() {
+            Some(name) => name.clone(),
+            None => "Unknown".to_string(),
+        };
+        let name = text(name).size(16);
+        let id = text(self.user.id().to_string()).size(12);
+        let user_info = column![name, id].spacing(5).width(Length::Fill);
+
+        row![avatar, user_info]
+            .padding(10)
+            .spacing(10)
+            .align_y(Alignment::Center)
+            .into()
+    }
+
+    fn space<'a>(&'a self, space: &'a Room, depth: u8) -> Element<'a> {
         let mut content = column![];
 
         let mut child_ids = space.children().iter().collect::<Vec<_>>();
@@ -55,9 +105,9 @@ impl super::State {
             };
 
             if child.is_space() {
-                content = content.push(self.render_space(child, depth + 1));
+                content = content.push(self.space(child, depth + 1));
             } else {
-                content = content.push(self.render_room(child, depth + 1));
+                content = content.push(self.room(child, depth + 1));
             }
         }
 
@@ -72,7 +122,7 @@ impl super::State {
             .to_owned();
 
         let space_name = text(space_name);
-        let space_image = self.render_sidebar_room_avatar(space, false);
+        let space_image = self.sidebar_room_avatar(space, false);
 
         let toggler = row![space_image, space_name]
             .align_y(Alignment::Center)
@@ -93,7 +143,7 @@ impl super::State {
         collapsible.into()
     }
 
-    fn render_room<'a>(&'a self, room: &'a Room, depth: u8) -> Element<'a> {
+    fn room<'a>(&'a self, room: &'a Room, depth: u8) -> Element<'a> {
         let room_name = match room.display_name() {
             Some(name) => name,
             None => format!("Room {}", room.id()),
@@ -104,7 +154,7 @@ impl super::State {
         };
 
         let room_name = text(room_name);
-        let room_image = self.render_sidebar_room_avatar(room, focused);
+        let room_image = self.sidebar_room_avatar(room, focused);
 
         let content = row![room_image, room_name]
             .align_y(Alignment::Center)
@@ -121,7 +171,7 @@ impl super::State {
             .into()
     }
 
-    fn render_sidebar_room_avatar<'a>(&'a self, room: &'a Room, focused: bool) -> Element<'a> {
+    fn sidebar_room_avatar<'a>(&'a self, room: &'a Room, focused: bool) -> Element<'a> {
         match self.room_avatar_cache.get(&room.id()) {
             Some(img) => match img {
                 Image::Ready(handle) => image(handle)
@@ -187,7 +237,7 @@ impl super::State {
         }
     }
 
-    fn render_spaces(&self) -> Element<'_> {
+    fn spaces(&self) -> Element<'_> {
         let mut root_parents = self
             .rooms
             .values()
@@ -209,7 +259,7 @@ impl super::State {
         let direct_rooms = root_parents.iter().filter(|room| room.is_direct());
         let mut dms = column![];
         for dm in direct_rooms {
-            dms = dms.push(self.render_room(dm, 1));
+            dms = dms.push(self.room(dm, 1));
         }
         let dm_collapsible = collapsible(text("Direct Messages"))
             .on_close(Message::DirectMessagesClosed)
@@ -223,7 +273,7 @@ impl super::State {
         let space_rooms = root_parents.iter().filter(|room| !room.is_direct());
         let mut spaces = column![];
         for space in space_rooms {
-            spaces = spaces.push(self.render_space(space, 0))
+            spaces = spaces.push(self.space(space, 0))
         }
 
         column([dm_collapsible.into(), spaces.into()]).into()
