@@ -14,5 +14,6 @@ fn main() -> iced::Result {
     iced::daemon(App::new, App::update, App::view)
         .subscription(App::subscription)
         .theme(App::theme)
+        .title("Opie")
         .run()
 }
