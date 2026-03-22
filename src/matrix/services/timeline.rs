@@ -14,7 +14,7 @@ pub type TimelineDiff = VectorDiff<Arc<TimelineItem>>;
 /// Create a new timeline for the given room. This will subscribe to updates and paginate backwards to load the initial items.
 pub async fn timeline(
     room: Room,
-) -> Result<(Timeline, mpsc::Receiver<TimelineUpdateEvent>), timeline::Error> {
+) -> Result<(Timeline, mpsc::Receiver<TimelineEvent>), timeline::Error> {
     let room_id = room.room_id().to_owned();
     let timeline = Arc::new(room.timeline().await?);
     let inner = timeline.clone();
@@ -24,7 +24,7 @@ pub async fn timeline(
 
     // Send the initial items as an update event
     _ = tx
-        .send(TimelineUpdateEvent::Initial(room_id.clone(), items))
+        .send(TimelineEvent::Initial(room_id.clone(), items))
         .await;
 
     let tx_clone = tx.clone();
@@ -33,10 +33,7 @@ pub async fn timeline(
         while let Some(diffs) = stream.next().await {
             let room_id = room_id_clone.clone();
             tracing::info!("Received {} diffs", diffs.len());
-            match tx_clone
-                .send(TimelineUpdateEvent::Updated(room_id, diffs))
-                .await
-            {
+            match tx_clone.send(TimelineEvent::Updated(room_id, diffs)).await {
                 Ok(_) => (),
                 Err(error) => {
                     tracing::error!("Failed to send update event: {}", error);
@@ -66,7 +63,7 @@ pub async fn timeline(
 }
 
 pub struct Timeline {
-    tx: mpsc::Sender<TimelineUpdateEvent>,
+    tx: mpsc::Sender<TimelineEvent>,
     room_id: OwnedRoomId,
     inner: Arc<MatrixTimeline>,
     task: JoinHandle<()>,
@@ -85,7 +82,7 @@ impl Timeline {
         self.task.abort();
         _ = self
             .tx
-            .send(TimelineUpdateEvent::Closed(self.room_id.clone()))
+            .send(TimelineEvent::Closed(self.room_id.clone()))
             .await;
     }
 }
@@ -96,9 +93,9 @@ impl Drop for Timeline {
     }
 }
 
-/// An event representing an update to the timeline.
+/// A room's timeline event.
 #[derive(Debug, Clone)]
-pub enum TimelineUpdateEvent {
+pub enum TimelineEvent {
     /// The timeline was initialized with the given items.
     Initial(OwnedRoomId, Vector<Arc<TimelineItem>>),
     /// The timeline was updated with the given diffs.
@@ -107,27 +104,27 @@ pub enum TimelineUpdateEvent {
     Closed(OwnedRoomId),
 }
 
-impl std::fmt::Display for TimelineUpdateEvent {
+impl std::fmt::Display for TimelineEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TimelineUpdateEvent::Initial(room_id, generic_vector) => {
+            TimelineEvent::Initial(room_id, generic_vector) => {
                 write!(
                     f,
-                    "TimelineUpdateEvent::Initial({}, {} items)",
+                    "TimelineEvent::Initial({}, {} items)",
                     room_id,
                     generic_vector.len()
                 )
             }
-            TimelineUpdateEvent::Updated(room_id, diffs) => {
+            TimelineEvent::Updated(room_id, diffs) => {
                 write!(
                     f,
-                    "TimelineUpdateEvent::Updated({}, {} diffs)",
+                    "TimelineEvent::Updated({}, {} diffs)",
                     room_id,
                     diffs.len()
                 )
             }
-            TimelineUpdateEvent::Closed(room_id) => {
-                write!(f, "TimelineUpdateEvent::Closed({})", room_id,)
+            TimelineEvent::Closed(room_id) => {
+                write!(f, "TimelineEvent::Closed({})", room_id,)
             }
         }
     }

@@ -1,4 +1,4 @@
-use super::{DEPTH_PADDING, HORIZONTAL_PADDING, Image, Message};
+use super::{DEPTH_PADDING, HORIZONTAL_PADDING, Image, Message, State};
 use iced::{
     Alignment, Color, ContentFit, Length, Padding, Theme,
     widget::{button, column, container, image, row, sensor, space, text},
@@ -17,8 +17,8 @@ const SIDEBAR_ROOM_PADDING: Padding = Padding {
 const SIDEBAR_ROOM_AVATAR_SIZE: u32 = 20;
 const SIDEBAR_USER_AVATAR_SIZE: u32 = 40;
 
-impl super::State {
-    pub fn sidebar(&self) -> Element<'_> {
+impl State {
+    pub(super) fn sidebar(&self) -> Element<'_> {
         let sidebar_column = column![self.spaces(), space::vertical(), self.user_info(),];
 
         container(sidebar_column)

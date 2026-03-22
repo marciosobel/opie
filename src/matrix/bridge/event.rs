@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::matrix::bridge::channel::ActionSender;
-use crate::matrix::services::{Room, TimelineUpdateEvent, UserInfo};
+use crate::matrix::services::{Room, TimelineEvent, UserInfo};
 
 use super::Error;
 use matrix_sdk::ruma::OwnedRoomId;
@@ -26,7 +26,7 @@ pub enum Event {
     /// A list of rooms that the user is a member of.
     RoomList(HashMap<OwnedRoomId, Arc<Room>>),
     /// The timeline for a room has been updated with new events or changes to existing events. The diff contains the changes that were made to the timeline.
-    TimelineEvent(TimelineUpdateEvent),
+    TimelineEvent(TimelineEvent),
 }
 
 impl From<Error> for Event {
@@ -35,8 +35,8 @@ impl From<Error> for Event {
     }
 }
 
-impl From<TimelineUpdateEvent> for Event {
-    fn from(value: TimelineUpdateEvent) -> Self {
+impl From<TimelineEvent> for Event {
+    fn from(value: TimelineEvent) -> Self {
         Event::TimelineEvent(value)
     }
 }

@@ -1,5 +1,5 @@
 use crate::matrix::bridge::Error;
-use crate::matrix::services::TimelineUpdateEvent;
+use crate::matrix::services::TimelineEvent;
 
 use super::Action;
 use super::Channel;
@@ -51,7 +51,7 @@ pub async fn handle(
         }
         Action::CloseTimeline(room_id) => {
             client.close_timeline(room_id.clone()).await;
-            channel.send(TimelineUpdateEvent::Closed(room_id)).await;
+            channel.send(TimelineEvent::Closed(room_id)).await;
             None
         }
     }

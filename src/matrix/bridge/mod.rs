@@ -9,7 +9,7 @@ use matrix_sdk::{
 };
 
 use crate::matrix::{
-    services::{self, Room, Timeline, TimelineUpdateEvent, UserInfo},
+    services::{self, Room, Timeline, TimelineEvent, UserInfo},
     session::ClientSession,
 };
 
@@ -141,7 +141,7 @@ impl ClientWrapper {
     pub(super) async fn room_timeline(
         &mut self,
         id: OwnedRoomId,
-    ) -> Result<tokio::sync::mpsc::Receiver<TimelineUpdateEvent>, Error> {
+    ) -> Result<tokio::sync::mpsc::Receiver<TimelineEvent>, Error> {
         let Some(room) = self.inner().get_room(&id) else {
             return Err(Error::RoomNotFound(id));
         };
