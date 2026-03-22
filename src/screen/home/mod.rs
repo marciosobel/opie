@@ -34,6 +34,7 @@ pub enum Message {
     FocusRoom(OwnedRoomId),
     LoadRoomAvatar(OwnedRoomId),
     RoomAvatarLoaded(OwnedRoomId, Image),
+    SidebarProfileClicked,
 }
 
 #[derive(Debug, Clone)]

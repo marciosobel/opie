@@ -70,13 +70,37 @@ impl State {
         };
         let name = text(name).size(16);
         let id = text(self.user.id().to_string()).size(12);
-        let user_info = column![name, id].spacing(5).width(Length::Fill);
 
-        row![avatar, user_info]
-            .padding(10)
+        let user_info_text = column![name, id].spacing(5).width(Length::Fill);
+        let user_info_with_avatar = row![avatar, user_info_text]
             .spacing(10)
-            .align_y(Alignment::Center)
-            .into()
+            .align_y(Alignment::Center);
+        let user_info = button(user_info_with_avatar)
+            .on_press(Message::SidebarProfileClicked)
+            .padding(5)
+            .style(|theme: &Theme, status: button::Status| {
+                let palette = theme.extended_palette();
+                let mut style = button::background(theme, status);
+
+                match status {
+                    button::Status::Active => {
+                        style.background = None;
+                    }
+                    button::Status::Hovered => {
+                        style.text_color = palette.background.strong.text;
+                        style = style.with_background(palette.background.strong.color);
+                    }
+                    button::Status::Pressed => {
+                        style.text_color = palette.background.stronger.text;
+                        style = style.with_background(palette.background.stronger.color);
+                    }
+                    _ => {}
+                }
+
+                style
+            });
+
+        container(user_info).padding(5).into()
     }
 
     fn space<'a>(&'a self, space: &'a Room, depth: u8) -> Element<'a> {
