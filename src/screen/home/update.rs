@@ -59,9 +59,8 @@ impl super::State {
             Message::RoomAvatarLoaded(id, image) => {
                 self.room_avatar_cache.insert(id, image);
             }
-            Message::SidebarProfileClicked => {
-                println!("Focused");
-            }
+            Message::OpenProfilePopup => self.profile_open = true,
+            Message::CloseProfilePopup => self.profile_open = false,
         }
 
         Action::none()

@@ -22,6 +22,7 @@ pub struct State {
     focused_room: Option<OwnedRoomId>,
     room_avatar_cache: HashMap<OwnedRoomId, Image>,
     timelines: HashMap<OwnedRoomId, Vector<Arc<TimelineItem>>>,
+    profile_open: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -34,7 +35,8 @@ pub enum Message {
     FocusRoom(OwnedRoomId),
     LoadRoomAvatar(OwnedRoomId),
     RoomAvatarLoaded(OwnedRoomId, Image),
-    SidebarProfileClicked,
+    OpenProfilePopup,
+    CloseProfilePopup,
 }
 
 #[derive(Debug, Clone)]
@@ -83,6 +85,7 @@ impl State {
             focused_room: None,
             room_avatar_cache: HashMap::new(),
             timelines: HashMap::new(),
+            profile_open: false,
         }
     }
 }
