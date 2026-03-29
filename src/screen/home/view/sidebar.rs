@@ -76,7 +76,7 @@ impl State {
             .spacing(10)
             .align_y(Alignment::Center);
         let user_info = button(user_info_with_avatar)
-            .on_press(Message::OpenProfilePopup)
+            .on_press(Message::OpenSettingsPopup)
             .padding(5)
             .style(|theme: &Theme, status: button::Status| {
                 let palette = theme.extended_palette();

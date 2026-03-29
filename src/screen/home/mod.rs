@@ -22,7 +22,7 @@ pub struct State {
     focused_room: Option<OwnedRoomId>,
     room_avatar_cache: HashMap<OwnedRoomId, Image>,
     timelines: HashMap<OwnedRoomId, Vector<Arc<TimelineItem>>>,
-    profile_open: bool,
+    settings_popup: view::settings_popup::State,
 }
 
 #[derive(Debug, Clone)]
@@ -35,12 +35,15 @@ pub enum Message {
     FocusRoom(OwnedRoomId),
     LoadRoomAvatar(OwnedRoomId),
     RoomAvatarLoaded(OwnedRoomId, Image),
-    OpenProfilePopup,
-    CloseProfilePopup,
+    OpenSettingsPopup,
+    CloseSettingsPopup,
+    SettingsPopup(view::settings_popup::Message),
 }
 
 #[derive(Debug, Clone)]
-pub enum Instruction {}
+pub enum Instruction {
+    SettingsPopup(view::settings_popup::Instruction),
+}
 
 #[derive(Debug, Clone)]
 struct User {
@@ -85,7 +88,7 @@ impl State {
             focused_room: None,
             room_avatar_cache: HashMap::new(),
             timelines: HashMap::new(),
-            profile_open: false,
+            settings_popup: view::settings_popup::State::new(),
         }
     }
 }

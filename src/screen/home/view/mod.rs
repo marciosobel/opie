@@ -1,6 +1,6 @@
 use iced::{
-    Element,
-    widget::{button, center, mouse_area, opaque, row, stack},
+    Color, Element, Padding,
+    widget::{center, container, mouse_area, opaque, row, stack},
 };
 
 const DEPTH_PADDING: f32 = 24.0;
@@ -9,25 +9,36 @@ const HORIZONTAL_PADDING: f32 = 10.0;
 use super::{Image, Message, State};
 
 mod main_view;
+pub(super) mod settings_popup;
 mod sidebar;
 
 impl State {
     pub fn view(&self) -> Element<'_, Message> {
         let base = row![self.sidebar(), self.main_view()];
 
-        if self.profile_open {
-            let popup = opaque(
-                mouse_area(center(opaque(self.profile_popup())))
-                    .on_press(Message::CloseProfilePopup),
-            );
-
-            stack![base, popup].into()
-        } else {
-            base.into()
+        if !self.settings_popup.open {
+            return base.into();
         }
-    }
 
-    fn profile_popup<'a>(&self) -> Element<'a, Message> {
-        todo!("Add popup content")
+        let content = container(self.settings_popup.view().map(Message::SettingsPopup))
+            .style(|theme| container::background(theme.palette().background));
+
+        let modal = container(opaque(
+            mouse_area(center(opaque(content)).padding(Padding {
+                left: 80.0,
+                right: 80.0,
+                top: 160.0,
+                bottom: 160.0,
+            }))
+            .on_press(Message::CloseSettingsPopup),
+        ))
+        .style(|_| {
+            container::Style::default().background(Color {
+                a: 0.8,
+                ..Color::BLACK
+            })
+        });
+
+        stack![base, modal].into()
     }
 }

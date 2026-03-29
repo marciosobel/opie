@@ -59,8 +59,16 @@ impl super::State {
             Message::RoomAvatarLoaded(id, image) => {
                 self.room_avatar_cache.insert(id, image);
             }
-            Message::OpenProfilePopup => self.profile_open = true,
-            Message::CloseProfilePopup => self.profile_open = false,
+            Message::OpenSettingsPopup => self.settings_popup.open = true,
+            Message::CloseSettingsPopup => self.settings_popup.open = false,
+            Message::SettingsPopup(message) => {
+                let action = self
+                    .settings_popup
+                    .update(message)
+                    .map(Message::SettingsPopup)
+                    .map_instruction(Instruction::SettingsPopup);
+                return action;
+            }
         }
 
         Action::none()
