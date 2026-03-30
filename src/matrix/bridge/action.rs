@@ -18,6 +18,8 @@ pub enum Action {
     GetTimeline(OwnedRoomId),
     /// Closes the timeline for the given room, aborting the background task that listens for updates.
     CloseTimeline(OwnedRoomId),
+    /// Get the devices this account is linked to
+    GetDevices,
 }
 
 impl std::fmt::Display for Action {
@@ -37,6 +39,7 @@ impl std::fmt::Display for Action {
             Action::CloseTimeline(owned_room_id) => {
                 write!(f, "CloseTimeline {{ room_id: {} }}", owned_room_id)
             }
+            Action::GetDevices => write!(f, "GetDevices"),
         }
     }
 }

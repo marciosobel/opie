@@ -41,9 +41,7 @@ pub enum Message {
 }
 
 #[derive(Debug, Clone)]
-pub enum Instruction {
-    SettingsPopup(view::settings_popup::Instruction),
-}
+pub enum Instruction {}
 
 #[derive(Debug, Clone)]
 struct User {

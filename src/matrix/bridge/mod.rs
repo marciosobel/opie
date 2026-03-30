@@ -5,7 +5,10 @@ use matrix_sdk::{
     Client,
     config::SyncSettings,
     media::MediaFormat,
-    ruma::{OwnedRoomId, api::client::filter::FilterDefinition},
+    ruma::{
+        OwnedRoomId,
+        api::client::{device::Device, filter::FilterDefinition},
+    },
 };
 
 use crate::matrix::{
@@ -191,6 +194,16 @@ impl ClientWrapper {
             .map_err(Arc::new)?;
 
         Ok(UserInfo::new(id, display_name, avatar))
+    }
+
+    async fn devices(&self) -> Result<Vec<Device>, Error> {
+        let response = self
+            .inner()
+            .devices()
+            .await
+            .map_err(|error| Arc::new(matrix_sdk::Error::Http(Box::new(error))))?;
+
+        Ok(response.devices)
     }
 }
 

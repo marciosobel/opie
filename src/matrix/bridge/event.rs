@@ -6,6 +6,7 @@ use crate::matrix::services::{Room, TimelineEvent, UserInfo};
 
 use super::Error;
 use matrix_sdk::ruma::OwnedRoomId;
+use matrix_sdk::ruma::api::client::device::Device;
 
 /// Events emitted by the Matrix bridge.
 #[derive(Debug, Clone)]
@@ -27,6 +28,8 @@ pub enum Event {
     RoomList(HashMap<OwnedRoomId, Arc<Room>>),
     /// The timeline for a room has been updated with new events or changes to existing events. The diff contains the changes that were made to the timeline.
     TimelineEvent(TimelineEvent),
+    /// The devices this account is linked to
+    DeviceList(Vec<Device>),
 }
 
 impl From<Error> for Event {
@@ -58,6 +61,7 @@ impl std::fmt::Display for Event {
             }
             Event::Syncing => write!(f, "Syncing"),
             Event::TimelineEvent(event) => write!(f, "TimelineEvent({})", event),
+            Event::DeviceList(devices) => write!(f, "DeviceList({} devices)", devices.len()),
         }
     }
 }

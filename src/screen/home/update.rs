@@ -10,6 +10,7 @@ use crate::matrix::{
     bridge::{Action as MatrixAction, Event as MatrixEvent},
     services::{Room, TimelineEvent},
 };
+use crate::screen::home::view::settings_popup;
 
 impl super::State {
     pub fn update(&mut self, message: Message) -> Action<Instruction, Message> {
@@ -65,13 +66,31 @@ impl super::State {
                 let action = self
                     .settings_popup
                     .update(message)
-                    .map(Message::SettingsPopup)
-                    .map_instruction(Instruction::SettingsPopup);
-                return action;
+                    .map(Message::SettingsPopup);
+
+                let instruction_task = match action.instruction {
+                    Some(instruction) => self.handle_settings_instruction(instruction),
+                    None => Task::none(),
+                };
+
+                return Action::task(instruction_task.chain(action.task));
             }
         }
 
         Action::none()
+    }
+
+    fn handle_settings_instruction(
+        &mut self,
+        instruction: settings_popup::Instruction,
+    ) -> Task<Message> {
+        match instruction {
+            settings_popup::Instruction::GetDeviceList => {
+                self.bridge.send(MatrixAction::GetDevices)
+            }
+        };
+
+        Task::none()
     }
 
     fn matrix_event(&mut self, event: MatrixEvent) -> Action<Instruction, Message> {
@@ -95,6 +114,10 @@ impl super::State {
                     self.timelines.remove(&room_id);
                 }
             },
+            MatrixEvent::DeviceList(devices) => {
+                self.settings_popup
+                    .update(settings_popup::Message::DeviceList(devices));
+            }
             _ => {}
         }
         Action::none()

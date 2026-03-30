@@ -13,14 +13,12 @@ pub async fn handle(
     client: &mut ClientWrapper,
 ) -> Option<State> {
     match action {
-        // Handling these actions without wildcard so we get exhaustion errors.
         Action::CreateMatrixClient { .. }
         | Action::Authenticate { .. }
         | Action::RestoreSession => {
             channel.send(Error::InvalidAction).await;
             None
         }
-
         Action::ListAllRooms => match client.get_joined_rooms().await {
             Ok(rooms) => {
                 channel.send(Event::RoomList(rooms)).await;
@@ -52,6 +50,13 @@ pub async fn handle(
         Action::CloseTimeline(room_id) => {
             client.close_timeline(room_id.clone()).await;
             channel.send(TimelineEvent::Closed(room_id)).await;
+            None
+        }
+        Action::GetDevices => {
+            match client.devices().await {
+                Ok(devices) => channel.send(Event::DeviceList(devices)).await,
+                Err(error) => channel.send(error).await,
+            }
             None
         }
     }

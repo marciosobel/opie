@@ -240,6 +240,7 @@ impl App {
             }
             matrix::bridge::Event::RoomList(_) => {}
             matrix::bridge::Event::TimelineEvent(_) => {}
+            matrix::bridge::Event::DeviceList(_) => {}
         };
 
         Task::none()
