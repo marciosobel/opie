@@ -1,8 +1,9 @@
 use iced::{
-    Element,
+    Alignment, Element,
     Length::{self, FillPortion},
     widget::{button, center, column, row, text},
 };
+use lucide_icons::Icon;
 
 use crate::Action;
 
@@ -20,7 +21,7 @@ pub enum Message {
 #[derive(Debug, Clone)]
 pub enum Instruction {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Tab {
     Devices,
 }
@@ -38,15 +39,40 @@ impl State {
     }
 
     pub fn tabs(&self) -> Element<'_, Message> {
-        let tabs = Tab::list().into_iter().map(|tab| {
-            button(text(tab.to_string()))
-                .width(Length::Fill)
-                .padding(0)
-                .on_press(Message::ChangeTab(tab))
-                .into()
-        });
+        let tabs = vec![(Tab::Devices, Icon::Monitor)]
+            .into_iter()
+            .map(|(tab, icon)| {
+                let selected = self.selected_tab == tab;
 
-        column(tabs).width(FillPortion(1)).into()
+                let content = row![icon.widget(), text(tab.to_string())]
+                    .align_y(Alignment::Center)
+                    .spacing(5);
+
+                button(content)
+                    .on_press(Message::ChangeTab(tab))
+                    .width(Length::Fill)
+                    .padding(10)
+                    .style(move |theme, status| {
+                        let palette = theme.extended_palette();
+                        let mut style = button::background(theme, status);
+                        style.border = style.border.rounded(0);
+
+                        match status {
+                            button::Status::Active if selected => {
+                                style.with_background(palette.background.strong.color)
+                            }
+                            _ => style,
+                        }
+                    })
+                    .into()
+            })
+            .collect::<Vec<_>>();
+
+        column(tabs)
+            .spacing(5)
+            .padding(5)
+            .width(FillPortion(1))
+            .into()
     }
 
     pub fn main_view(&self) -> Element<'_, Message> {
@@ -61,13 +87,6 @@ impl State {
         }
 
         Action::none()
-    }
-}
-
-impl Tab {
-    /// Returns a list of tabs to be displayed in the application
-    pub fn list() -> Vec<Tab> {
-        vec![Tab::Devices]
     }
 }
 
