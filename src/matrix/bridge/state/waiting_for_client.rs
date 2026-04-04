@@ -1,10 +1,8 @@
 use crate::matrix::bridge::Error;
 
-use super::Action;
-use super::Channel;
-use super::State;
+use super::{Action, Channel, Event, State};
 
-pub(super) async fn handle(action: Action, channel: &mut Channel) -> Option<State> {
+pub(super) async fn handle(action: Action, channel: &mut Channel<Action, Event>) -> Option<State> {
     match action {
         Action::CreateMatrixClient {
             homeserver,

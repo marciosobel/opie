@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
-use matrix_sdk::ruma::OwnedRoomId;
+use matrix_sdk::ruma::{OwnedDeviceId, OwnedRoomId};
 use thiserror::Error;
+
+use crate::matrix::services::sas_verification;
 
 #[derive(Error, Debug, Clone)]
 pub enum Error {
@@ -22,4 +24,10 @@ pub enum Error {
 
     #[error("Room {0} not found")]
     RoomNotFound(OwnedRoomId),
+
+    #[error("Device {0} not found")]
+    DeviceNotFound(OwnedDeviceId),
+
+    #[error("Sas verification error: {0}")]
+    SasVerificationError(#[from] sas_verification::Error),
 }

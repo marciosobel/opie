@@ -4,7 +4,7 @@ use iced::{
     widget::{button, column, row, text},
 };
 use lucide_icons::Icon;
-use matrix_sdk::ruma::api::client::device::Device;
+use matrix_sdk::{encryption::identities::Device, ruma::OwnedDeviceId};
 
 use crate::Action;
 
@@ -23,11 +23,13 @@ pub enum Message {
     ChangeTab(Tab),
     DeviceList(Vec<Device>),
     OpenUrl(String),
+    VerifyDevice(OwnedDeviceId),
 }
 
 #[derive(Debug, Clone)]
 pub enum Instruction {
     GetDeviceList,
+    VerifyDevice(OwnedDeviceId),
 }
 
 #[derive(Debug, Clone)]
@@ -116,6 +118,9 @@ impl State {
             Message::DeviceList(devices) => self.device_state = DeviceState::Ready(devices),
             Message::OpenUrl(url) => {
                 _ = open::that(url);
+            }
+            Message::VerifyDevice(id) => {
+                return Action::instruction(Instruction::VerifyDevice(id));
             }
         }
 

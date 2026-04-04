@@ -1,15 +1,11 @@
 use crate::matrix::bridge::Error;
 use crate::matrix::session::ClientSession;
 
-use super::Action;
-use super::Channel;
-use super::ClientWrapper;
-use super::Event;
-use super::State;
+use super::{Action, Channel, ClientWrapper, Event, State, create_sas_bridge};
 
 pub(super) async fn handle(
     action: Action,
-    channel: &mut Channel,
+    channel: &mut Channel<Action, Event>,
     client: &mut ClientWrapper,
     client_session: &mut ClientSession,
 ) -> Option<State> {
@@ -38,7 +34,12 @@ pub(super) async fn handle(
                             };
 
                             channel.send(Event::Authenticated(user_info)).await;
-                            Some(State::Authenticated(client.clone()))
+                            let sas_verification =
+                                create_sas_bridge(client.inner(), channel.sender());
+                            Some(State::Authenticated {
+                                client: client.clone(),
+                                sas_verification,
+                            })
                         }
                         Err(error) => {
                             channel.send(error).await;

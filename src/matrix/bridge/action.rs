@@ -1,7 +1,9 @@
 use matrix_sdk::ruma::OwnedRoomId;
 
+use crate::matrix::services::sas_verification;
+
 /// Actions (or commands) that can be sent to the Matrix bridge.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Action {
     /// Create the matrix client with the given homeserver
     CreateMatrixClient {
@@ -20,6 +22,14 @@ pub enum Action {
     CloseTimeline(OwnedRoomId),
     /// Get the devices this account is linked to
     GetDevices,
+    /// Creates an emoji verification request with the specified `DeviceId`.
+    SasVerification(sas_verification::Action),
+}
+
+impl From<sas_verification::Action> for Action {
+    fn from(value: sas_verification::Action) -> Self {
+        Self::SasVerification(value)
+    }
 }
 
 impl std::fmt::Display for Action {
@@ -33,13 +43,16 @@ impl std::fmt::Display for Action {
             }
             Action::RestoreSession => write!(f, "RestoreSession"),
             Action::ListAllRooms => write!(f, "ListAllRooms"),
-            Action::GetTimeline(owned_room_id) => {
-                write!(f, "GetTimeline {{ room_id: {} }}", owned_room_id)
+            Action::GetTimeline(room_id) => {
+                write!(f, "GetTimeline {{ room_id: {} }}", room_id)
             }
-            Action::CloseTimeline(owned_room_id) => {
-                write!(f, "CloseTimeline {{ room_id: {} }}", owned_room_id)
+            Action::CloseTimeline(room_id) => {
+                write!(f, "CloseTimeline {{ room_id: {} }}", room_id)
             }
             Action::GetDevices => write!(f, "GetDevices"),
+            Action::SasVerification(action) => {
+                write!(f, "SasVerification({})", action)
+            }
         }
     }
 }

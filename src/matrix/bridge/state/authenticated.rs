@@ -1,16 +1,13 @@
-use crate::matrix::bridge::Error;
 use crate::matrix::services::TimelineEvent;
+use crate::matrix::{bridge::Error, services::sas_verification};
 
-use super::Action;
-use super::Channel;
-use super::ClientWrapper;
-use super::Event;
-use super::State;
+use super::{Action, Channel, ClientWrapper, Event, State};
 
 pub async fn handle(
     action: Action,
-    channel: &mut Channel,
+    channel: &mut Channel<Action, Event>,
     client: &mut ClientWrapper,
+    sas_verification: &mut sas_verification::Bridge,
 ) -> Option<State> {
     match action {
         Action::CreateMatrixClient { .. }
@@ -57,6 +54,10 @@ pub async fn handle(
                 Ok(devices) => channel.send(Event::DeviceList(devices)).await,
                 Err(error) => channel.send(error).await,
             }
+            None
+        }
+        Action::SasVerification(action) => {
+            sas_verification.send(action);
             None
         }
     }

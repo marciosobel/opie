@@ -69,11 +69,13 @@ impl State {
             None => "Unknown".to_string(),
         };
         let name = text(name).size(16);
-        let id = text(self.user.id().to_string()).size(12);
+        let id = text(self.user.id().to_string())
+            .style(text::secondary)
+            .size(12);
 
-        let user_info_text = column![name, id].spacing(5).width(Length::Fill);
+        let user_info_text = column![name, id].width(Length::Fill);
         let user_info_with_avatar = row![avatar, user_info_text]
-            .spacing(10)
+            .spacing(5)
             .align_y(Alignment::Center);
         let user_info = button(user_info_with_avatar)
             .on_press(Message::OpenSettingsPopup)
@@ -158,11 +160,8 @@ impl State {
             .on_open(Message::SpaceOpened(space.id()))
             .content(content)
             .open(open)
-            .style(move |theme: &Theme, status| sidebar_room_button_style(theme, status, false))
-            .padding(Padding {
-                left: (DEPTH_PADDING * depth as f32) + HORIZONTAL_PADDING,
-                ..SIDEBAR_ROOM_PADDING
-            });
+            .padding(SIDEBAR_ROOM_PADDING.left((DEPTH_PADDING * depth as f32) + HORIZONTAL_PADDING))
+            .style(move |theme: &Theme, status| sidebar_room_button_style(theme, status, false));
 
         collapsible.into()
     }
@@ -186,10 +185,7 @@ impl State {
 
         button(content)
             .on_press(Message::FocusRoom(room.id()))
-            .padding(Padding {
-                left: (DEPTH_PADDING * depth as f32) + HORIZONTAL_PADDING,
-                ..SIDEBAR_ROOM_PADDING
-            })
+            .padding(SIDEBAR_ROOM_PADDING.left((DEPTH_PADDING * depth as f32) + HORIZONTAL_PADDING))
             .width(Length::Fill)
             .style(move |theme: &Theme, status| sidebar_room_button_style(theme, status, focused))
             .into()

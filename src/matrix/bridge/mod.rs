@@ -4,12 +4,11 @@ use anyhow::Result;
 use matrix_sdk::{
     Client,
     config::SyncSettings,
+    encryption::identities::Device,
     media::MediaFormat,
-    ruma::{
-        OwnedRoomId,
-        api::client::{device::Device, filter::FilterDefinition},
-    },
+    ruma::{OwnedRoomId, api::client::filter::FilterDefinition},
 };
+use tokio::sync::mpsc;
 
 use crate::matrix::{
     services::{self, Room, Timeline, TimelineEvent, UserInfo},
@@ -25,12 +24,14 @@ pub use event::Event;
 mod action;
 pub use action::Action;
 
-mod channel;
-pub use channel::ActionSender as Bridge;
-use channel::Channel;
+pub mod channel;
+pub use channel::{ActionSender, Channel, EventSender};
 
 mod state;
 use state::State;
+
+/// A connection that allows to send actions to the matrix backend.
+pub type Bridge = ActionSender<Action>;
 
 /// A bridge between the Matrix SDK and the rest of the application.
 #[derive(Clone)]
@@ -144,7 +145,7 @@ impl ClientWrapper {
     pub(super) async fn room_timeline(
         &mut self,
         id: OwnedRoomId,
-    ) -> Result<tokio::sync::mpsc::Receiver<TimelineEvent>, Error> {
+    ) -> Result<mpsc::Receiver<TimelineEvent>, Error> {
         let Some(room) = self.inner().get_room(&id) else {
             return Err(Error::RoomNotFound(id));
         };
@@ -196,14 +197,20 @@ impl ClientWrapper {
         Ok(UserInfo::new(id, display_name, avatar))
     }
 
+    /// List all devices this user is linked to
     async fn devices(&self) -> Result<Vec<Device>, Error> {
-        let response = self
-            .inner()
-            .devices()
-            .await
-            .map_err(|error| Arc::new(matrix_sdk::Error::Http(Box::new(error))))?;
+        let client = self.inner();
+        let user_id = client.user_id().ok_or(Error::NotAuthenticated)?;
 
-        Ok(response.devices)
+        let devices = client
+            .encryption()
+            .get_user_devices(user_id)
+            .await
+            .map_err(Arc::new)?
+            .devices()
+            .collect();
+
+        Ok(devices)
     }
 }
 
@@ -213,11 +220,11 @@ pub fn subscribe() -> iced::Subscription<Event> {
         iced::stream::channel(channel::CHANNEL_SIZE, async |tx| {
             tracing::info!("Subscription handler started");
             let mut state = State::new();
-            let (tx, mut channel) = Channel::new(tx);
+            let (tx, mut channel) = Channel::with_tx(tx);
 
             channel.send(Event::Stale(tx)).await;
             loop {
-                let action = channel.next_action().await;
+                let action = channel.recv().await;
                 tracing::info!("Received action: {}", action);
                 state.handle_action(action, &mut channel).await;
             }

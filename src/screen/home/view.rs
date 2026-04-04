@@ -1,5 +1,5 @@
 use iced::{
-    Color, Element, Padding,
+    Color, Element, padding,
     widget::{center, container, mouse_area, opaque, row, stack},
 };
 
@@ -24,13 +24,8 @@ impl State {
             .style(|theme| container::background(theme.palette().background));
 
         let modal = container(opaque(
-            mouse_area(center(opaque(content)).padding(Padding {
-                left: 80.0,
-                right: 80.0,
-                top: 160.0,
-                bottom: 160.0,
-            }))
-            .on_press(Message::CloseSettingsPopup),
+            mouse_area(center(opaque(content)).padding(padding::vertical(160).horizontal(80)))
+                .on_press(Message::CloseSettingsPopup),
         ))
         .style(|_| {
             container::Style::default().background(Color {

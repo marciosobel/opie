@@ -1,19 +1,20 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::matrix::bridge::channel::ActionSender;
-use crate::matrix::services::{Room, TimelineEvent, UserInfo};
+use crate::matrix::{
+    bridge::{Action, Error, channel::ActionSender},
+    services::{Room, TimelineEvent, UserInfo, sas_verification},
+};
 
-use super::Error;
+use matrix_sdk::encryption::identities::Device;
 use matrix_sdk::ruma::OwnedRoomId;
-use matrix_sdk::ruma::api::client::device::Device;
 
 /// Events emitted by the Matrix bridge.
 #[derive(Debug, Clone)]
 pub enum Event {
     /// The Matrix bridge has been initialized and is waiting for either [`Action::CreateMatrixClient(homeserver)`](Action::CreateMatrixClient)
     /// or [`Action::RestoreSession`](Action::RestoreSession) to proceed.
-    Stale(ActionSender),
+    Stale(ActionSender<Action>),
     /// The Matrix client has been built and is ready to use.
     Ready,
     /// An error that occurred in the Matrix bridge.
@@ -28,6 +29,8 @@ pub enum Event {
     RoomList(HashMap<OwnedRoomId, Arc<Room>>),
     /// The timeline for a room has been updated with new events or changes to existing events. The diff contains the changes that were made to the timeline.
     TimelineEvent(TimelineEvent),
+    /// An event representing some change in the SAS verification
+    SasVerificationEvent(sas_verification::Event),
     /// The devices this account is linked to
     DeviceList(Vec<Device>),
 }
@@ -44,6 +47,15 @@ impl From<TimelineEvent> for Event {
     }
 }
 
+impl From<sas_verification::Event> for Event {
+    fn from(value: sas_verification::Event) -> Self {
+        match value {
+            sas_verification::Event::Error(error) => Self::Error(error.into()),
+            event => Self::SasVerificationEvent(event),
+        }
+    }
+}
+
 impl std::fmt::Display for Event {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -52,8 +64,8 @@ impl std::fmt::Display for Event {
             Event::Error(error) => write!(f, "Error({})", error),
             Event::Authenticated(user) => write!(
                 f,
-                "Authenticated as {}",
-                user.display_name().unwrap_or("unknown".into())
+                "Authenticated({})",
+                user.display_name().unwrap_or(user.id().to_string())
             ),
             Event::SessionRestoreFailed => write!(f, "SessionRestoreFailed"),
             Event::RoomList(rooms) => {
@@ -62,6 +74,7 @@ impl std::fmt::Display for Event {
             Event::Syncing => write!(f, "Syncing"),
             Event::TimelineEvent(event) => write!(f, "TimelineEvent({})", event),
             Event::DeviceList(devices) => write!(f, "DeviceList({} devices)", devices.len()),
+            Event::SasVerificationEvent(event) => write!(f, "SasVerificationEvent({})", event),
         }
     }
 }

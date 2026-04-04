@@ -3,16 +3,17 @@ use std::sync::Arc;
 use iced::{Task, widget::image};
 use matrix_sdk_ui::eyeball_im::Vector;
 
-use super::Image;
-use super::{Instruction, Message};
+use super::{Image, Instruction, Message, State};
+
 use crate::Action;
+use crate::matrix::services::sas_verification;
 use crate::matrix::{
     bridge::{Action as MatrixAction, Event as MatrixEvent},
     services::{Room, TimelineEvent},
 };
 use crate::screen::home::view::settings_popup;
 
-impl super::State {
+impl State {
     pub fn update(&mut self, message: Message) -> Action<Instruction, Message> {
         match message {
             Message::MatrixEvent(event) => {
@@ -88,6 +89,9 @@ impl super::State {
             settings_popup::Instruction::GetDeviceList => {
                 self.bridge.send(MatrixAction::GetDevices)
             }
+            settings_popup::Instruction::VerifyDevice(id) => self.bridge.send(
+                MatrixAction::SasVerification(sas_verification::Action::VerifyDevice(id)),
+            ),
         };
 
         Task::none()

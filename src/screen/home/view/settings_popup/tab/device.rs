@@ -1,9 +1,9 @@
 use iced::{
-    Element, Font, font,
-    widget::{column, container, rich_text, row, space, span, text},
+    Alignment, Element, Font, font, padding,
+    widget::{button, column, container, rich_text, row, space, span, text},
 };
 use lucide_icons::Icon;
-use matrix_sdk::ruma::api::client::device::Device;
+use matrix_sdk::encryption::identities::Device;
 
 use crate::components::separator;
 
@@ -15,16 +15,16 @@ impl Tab {
             DeviceState::None => return text("No action taken").into(),
             DeviceState::Loading => return text("Loading devices...").into(),
             DeviceState::Ready(devices) => {
-                let mut device_list = column![].spacing(10);
+                let mut device_list = column![];
                 let mut devices = devices.iter().peekable();
                 while let Some(device) = devices.next() {
-                    let name = device
-                        .display_name
-                        .clone()
-                        .unwrap_or(String::from("Unknown device"));
+                    let name = match device.display_name() {
+                        Some(name) => name.to_string(),
+                        None => String::from("Unknown device"),
+                    };
 
                     let name = text(name).size(16);
-                    let id = text(device.device_id.to_string())
+                    let id = text(device.device_id().to_string())
                         .size(12)
                         .style(text::secondary);
                     let icon = container(device.icon().widget().size(20).center())
@@ -36,8 +36,27 @@ impl Tab {
                             style.background(palette.background.stronger.color)
                         });
 
-                    let info = row![icon, column![name, id].spacing(2.5)].spacing(10);
-                    device_list = device_list.push(container(info).padding(5));
+                    let badge = {
+                        let content = if device.is_verified_with_cross_signing() {
+                            row![Icon::CircleCheck.widget(), "Verified"]
+                        } else {
+                            row![Icon::CircleAlert.widget(), "Not verified"]
+                        };
+                        container(content).padding(padding::horizontal(10))
+                    };
+
+                    let verify_button =
+                        button(row![Icon::Shield.widget(), text("Verify")].spacing(5))
+                            .on_press(Message::VerifyDevice(device.device_id().to_owned()));
+
+                    let info_text = column![row![name, badge].spacing(5), id].spacing(2.5);
+                    let info = row![icon, info_text].spacing(10);
+
+                    device_list = device_list.push(
+                        row![info, space::horizontal(), verify_button]
+                            .align_y(Alignment::Center)
+                            .padding(5),
+                    );
 
                     let is_last = devices.peek().is_none();
                     if !is_last {
@@ -45,7 +64,7 @@ impl Tab {
                     }
                 }
 
-                row![device_list, space::horizontal()].into()
+                device_list.spacing(10).into()
             }
         };
 
@@ -78,8 +97,8 @@ trait DeviceExt {
 
 impl DeviceExt for Device {
     fn icon(&self) -> Icon {
-        let name = match self.display_name {
-            Some(ref display_name) => display_name.to_lowercase(),
+        let name = match self.display_name() {
+            Some(display_name) => display_name.to_lowercase(),
             None => return Icon::Box,
         };
 
