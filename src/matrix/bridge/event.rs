@@ -3,10 +3,9 @@ use std::sync::Arc;
 
 use crate::matrix::{
     bridge::{Action, Error, channel::ActionSender},
-    services::{Room, TimelineEvent, UserInfo, sas_verification},
+    services::{Device, Room, TimelineEvent, UserInfo, sas_verification},
 };
 
-use matrix_sdk::encryption::identities::Device;
 use matrix_sdk::ruma::OwnedRoomId;
 
 /// Events emitted by the Matrix bridge.

@@ -1,5 +1,5 @@
 use iced::{
-    Element,
+    Element, Length,
     widget::{center, column, text},
 };
 
@@ -32,6 +32,6 @@ impl State {
             }
         }
 
-        content.into()
+        content.width(Length::Fill).into()
     }
 }

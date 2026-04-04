@@ -3,7 +3,6 @@ use iced::{
     widget::{button, column, container, rich_text, row, space, span, text},
 };
 use lucide_icons::Icon;
-use matrix_sdk::encryption::identities::Device;
 
 use crate::components::separator;
 
@@ -18,16 +17,14 @@ impl Tab {
                 let mut device_list = column![];
                 let mut devices = devices.iter().peekable();
                 while let Some(device) = devices.next() {
-                    let name = match device.display_name() {
+                    let name = match &device.display_name {
                         Some(name) => name.to_string(),
                         None => String::from("Unknown device"),
                     };
 
                     let name = text(name).size(16);
-                    let id = text(device.device_id().to_string())
-                        .size(12)
-                        .style(text::secondary);
-                    let icon = container(device.icon().widget().size(20).center())
+                    let id = text(device.id.to_string()).size(12).style(text::secondary);
+                    let icon = container(device.kind.widget().size(20).center())
                         .center(36)
                         .style(|theme| {
                             let palette = theme.extended_palette();
@@ -37,7 +34,7 @@ impl Tab {
                         });
 
                     let badge = {
-                        let content = if device.is_verified_with_cross_signing() {
+                        let content = if device.verified {
                             row![Icon::CircleCheck.widget(), "Verified"]
                         } else {
                             row![Icon::CircleAlert.widget(), "Not verified"]
@@ -47,7 +44,7 @@ impl Tab {
 
                     let verify_button =
                         button(row![Icon::Shield.widget(), text("Verify")].spacing(5))
-                            .on_press(Message::VerifyDevice(device.device_id().to_owned()));
+                            .on_press(Message::VerifyDevice(device.id.clone()));
 
                     let info_text = column![row![name, badge].spacing(5), id].spacing(2.5);
                     let info = row![icon, info_text].spacing(10);
@@ -76,7 +73,7 @@ impl Tab {
                     span("here.")
                         .font(Font {
                             weight: font::Weight::Bold,
-                            ..Default::default()
+                            ..Font::DEFAULT
                         })
                         .size(16)
                         .link("https://account.matrix.org/account/sessions")
@@ -88,26 +85,5 @@ impl Tab {
         ]
         .spacing(10)
         .into()
-    }
-}
-
-trait DeviceExt {
-    fn icon(&self) -> Icon;
-}
-
-impl DeviceExt for Device {
-    fn icon(&self) -> Icon {
-        let name = match self.display_name() {
-            Some(display_name) => display_name.to_lowercase(),
-            None => return Icon::Box,
-        };
-
-        if name.contains("web") || name.contains("browser") {
-            Icon::AppWindowMac
-        } else if name.contains("android") || name.contains("ios") || name.contains("iphone") {
-            Icon::Smartphone
-        } else {
-            Icon::Monitor
-        }
     }
 }

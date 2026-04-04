@@ -4,9 +4,9 @@ use iced::{
     widget::{button, column, row, text},
 };
 use lucide_icons::Icon;
-use matrix_sdk::{encryption::identities::Device, ruma::OwnedDeviceId};
+use matrix_sdk::ruma::OwnedDeviceId;
 
-use crate::Action;
+use crate::{Action, matrix::services::Device};
 
 mod tab;
 use tab::Tab;

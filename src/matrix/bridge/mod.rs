@@ -4,14 +4,13 @@ use anyhow::Result;
 use matrix_sdk::{
     Client,
     config::SyncSettings,
-    encryption::identities::Device,
     media::MediaFormat,
     ruma::{OwnedRoomId, api::client::filter::FilterDefinition},
 };
 use tokio::sync::mpsc;
 
 use crate::matrix::{
-    services::{self, Room, Timeline, TimelineEvent, UserInfo},
+    services::{self, Device, Room, Timeline, TimelineEvent, UserInfo},
     session::ClientSession,
 };
 
@@ -208,6 +207,7 @@ impl ClientWrapper {
             .await
             .map_err(Arc::new)?
             .devices()
+            .map(Device::from)
             .collect();
 
         Ok(devices)
