@@ -16,7 +16,7 @@ pub struct Device {
     pub is_self: bool,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum DeviceKind {
     Desktop,
     Web,
@@ -66,6 +66,14 @@ impl DeviceKind {
         self.clone().into()
     }
 }
+
+impl PartialEq for Device {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for Device {}
 
 impl From<MatrixDevice> for Device {
     fn from(value: MatrixDevice) -> Self {

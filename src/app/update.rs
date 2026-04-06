@@ -6,7 +6,7 @@ use rand::{RngExt, distr::Alphanumeric};
 use crate::{
     Action,
     matrix::{
-        bridge::{Action as MatrixAction, Event},
+        bridge::{self, Action as MatrixAction, Event},
         services::{SasAction, sas_verification},
     },
     screen::{auth, home},
@@ -52,7 +52,8 @@ impl App {
             Message::CloseVerificationModal => match &mut self.verification_state {
                 VerificationState::Emoji(_)
                 | VerificationState::Ongoing
-                | VerificationState::Confirmed => {
+                | VerificationState::Confirmed
+                | VerificationState::Created => {
                     if let Some(bridge) = &mut self.bridge {
                         bridge.send(SasAction::Cancel);
                     }
@@ -64,7 +65,7 @@ impl App {
                 }
                 VerificationState::Stale => Task::none(),
                 VerificationState::Errored(error) => {
-                    let error = crate::matrix::bridge::Error::SasVerificationError(error.clone());
+                    let error = bridge::Error::SasVerificationError(error.clone());
                     self.error = Arc::new(Some(error.into()));
                     Task::none()
                 }

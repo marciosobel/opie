@@ -28,6 +28,7 @@ pub async fn request_verification(
     sas: Arc<Mutex<Option<SasVerification>>>,
 ) -> Result<(), matrix_sdk::Error> {
     request.accept().await?;
+    sender.send(Event::Created).await;
 
     let mut stream = request.changes();
     tokio::spawn(async move {
