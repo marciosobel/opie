@@ -19,6 +19,8 @@ pub enum VerificationState {
     Emoji([Emoji; 7]),
     /// Something went wrong in the verification flow.
     Errored(SasVerificationError),
+    /// The verification has been accepted by our side.
+    Confirmed,
 }
 
 impl From<SasVerificationEvent> for VerificationState {
@@ -29,6 +31,7 @@ impl From<SasVerificationEvent> for VerificationState {
             SasVerificationEvent::Error(error) => Self::Errored(error),
             SasVerificationEvent::Started => Self::Ongoing,
             SasVerificationEvent::VerifyEmojis(emoji) => Self::Emoji(emoji),
+            SasVerificationEvent::Confirmed => Self::Confirmed,
         }
     }
 }

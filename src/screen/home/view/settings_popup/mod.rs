@@ -115,7 +115,15 @@ impl State {
                     }
                 }
             }
-            Message::DeviceList(devices) => self.device_state = DeviceState::Ready(devices),
+            Message::DeviceList(devices) => {
+                self.device_state = {
+                    let devices_without_self = devices
+                        .into_iter()
+                        .filter(|device| !device.is_self)
+                        .collect();
+                    DeviceState::Ready(devices_without_self)
+                }
+            }
             Message::OpenUrl(url) => {
                 _ = open::that(url);
             }

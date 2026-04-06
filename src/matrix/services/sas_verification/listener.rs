@@ -84,14 +84,10 @@ impl Listener {
                     Action::Accept => {
                         let sas = get_sas_from_mutex(&sas);
                         if let Some(sas) = sas {
-                            tracing::info!("sas exists, confirming");
                             if let Err(error) = sas.confirm().await {
                                 tracing::error!("failed to confirm sas: {:?}", error);
                                 channel.send(Event::Error(error.into())).await;
                             }
-                            tracing::info!("sas confirmed");
-                        } else {
-                            tracing::info!("sas does not exist, exiting");
                         }
                     }
                     Action::Mismatch => {
@@ -116,8 +112,6 @@ impl Listener {
 }
 
 fn get_sas_from_mutex(mutex: &Mutex<Option<SasVerification>>) -> Option<SasVerification> {
-    tracing::info!("acquiring lock");
     let guard = mutex.lock().expect("Should not be poisoned");
-    tracing::info!("dropping lock");
     (*guard).clone()
 }

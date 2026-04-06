@@ -17,6 +17,8 @@ pub enum Event {
     Started,
     /// The emojis to be verified
     VerifyEmojis([Emoji; 7]),
+    /// The verification flow has been accepted by our side
+    Confirmed,
 }
 
 impl Into<Event> for Error {
@@ -51,6 +53,7 @@ impl std::fmt::Display for Event {
                         .join(", ")
                 )
             }
+            Event::Confirmed => write!(f, "Confirmed"),
         }
     }
 }

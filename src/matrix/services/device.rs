@@ -1,12 +1,19 @@
 use lucide_icons::Icon;
 use matrix_sdk::{encryption::identities::Device as MatrixDevice, ruma::OwnedDeviceId};
 
+/// A wrapper with useful device info
 #[derive(Debug, Clone)]
 pub struct Device {
+    /// The ID of the device
     pub id: OwnedDeviceId,
+    /// The name of the device
     pub display_name: Option<String>,
+    /// Whether the device is verified or not
     pub verified: bool,
+    /// The kind of the device
     pub kind: DeviceKind,
+    /// Whether or not this device is the the one running this app
+    pub is_self: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -45,6 +52,7 @@ impl Device {
             display_name,
             verified,
             kind,
+            is_self: false,
         }
     }
 }

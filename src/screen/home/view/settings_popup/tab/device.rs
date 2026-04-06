@@ -1,5 +1,5 @@
 use iced::{
-    Alignment, Element, Font, font, padding,
+    Alignment, Element, Font, font,
     widget::{button, column, container, rich_text, row, space, span, text},
 };
 use lucide_icons::Icon;
@@ -9,7 +9,7 @@ use crate::components::separator;
 use super::{super::DeviceState, Message, State, Tab};
 
 impl Tab {
-    pub(super) fn render_device_tab(&self, state: &State) -> Element<'_, Message> {
+    pub(super) fn render_device_tab<'a>(&'a self, state: &'a State) -> Element<'a, Message> {
         let device_list: Element<'_, Message> = match &state.device_state {
             DeviceState::None => return text("No action taken").into(),
             DeviceState::Loading => return text("Loading devices...").into(),
@@ -33,20 +33,15 @@ impl Tab {
                             style.background(palette.background.stronger.color)
                         });
 
-                    let badge = {
-                        let content = if device.verified {
-                            row![Icon::CircleCheck.widget(), "Verified"]
-                        } else {
-                            row![Icon::CircleAlert.widget(), "Not verified"]
-                        };
-                        container(content).padding(padding::horizontal(10))
-                    };
+                    let badge = verified_badge(device.verified);
 
                     let verify_button =
                         button(row![Icon::Shield.widget(), text("Verify")].spacing(5))
                             .on_press(Message::VerifyDevice(device.id.clone()));
 
-                    let info_text = column![row![name, badge].spacing(5), id].spacing(2.5);
+                    let info_text =
+                        column![row![name, badge].spacing(5).align_y(Alignment::Center), id]
+                            .spacing(2.5);
                     let info = row![icon, info_text].spacing(10);
 
                     device_list = device_list.push(
@@ -86,4 +81,14 @@ impl Tab {
         .spacing(10)
         .into()
     }
+}
+
+fn verified_badge<'a, Message: 'a>(verified: bool) -> Element<'a, Message> {
+    let badge = if verified {
+        Icon::CircleCheck.widget().style(text::success)
+    } else {
+        Icon::CircleAlert.widget().style(text::danger)
+    };
+
+    badge.size(14).into()
 }

@@ -1,6 +1,6 @@
 use iced::{
+    widget::{button, column, row, Button},
     Alignment, Element, Theme,
-    widget::{Button, button, column, row},
 };
 
 pub struct Collapsible<'a, Message> {

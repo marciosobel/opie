@@ -50,7 +50,9 @@ impl App {
                 self.handle_action(action)
             }
             Message::CloseVerificationModal => match &mut self.verification_state {
-                VerificationState::Emoji(_) | VerificationState::Ongoing => {
+                VerificationState::Emoji(_)
+                | VerificationState::Ongoing
+                | VerificationState::Confirmed => {
                     if let Some(bridge) = &mut self.bridge {
                         bridge.send(SasAction::Cancel);
                     }
@@ -119,17 +121,8 @@ impl App {
             Event::TimelineEvent(_) => {}
             Event::DeviceList(_) => {}
             Event::SasVerificationEvent(event) => match event {
-                sas_verification::Event::Started => {
-                    self.verification_state = VerificationState::Ongoing
-                }
-                sas_verification::Event::VerifyEmojis(emojis) => {
-                    self.verification_state = VerificationState::Emoji(emojis)
-                }
-                sas_verification::Event::Done => self.verification_state = VerificationState::Done,
-                sas_verification::Event::Cancelled(info) => {
-                    self.verification_state = VerificationState::Cancelled(info);
-                }
                 sas_verification::Event::Error(error) => tracing::error!("{}", error),
+                e => self.verification_state = e.into(),
             },
         };
 

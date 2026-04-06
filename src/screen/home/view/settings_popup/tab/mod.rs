@@ -11,7 +11,7 @@ pub enum Tab {
 }
 
 impl Tab {
-    pub fn render(&self, state: &State) -> Element<'_, Message> {
+    pub fn render<'a>(&'a self, state: &'a State) -> Element<'a, Message> {
         match self {
             Tab::Devices => self.render_device_tab(state),
         }

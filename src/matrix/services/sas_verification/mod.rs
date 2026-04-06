@@ -29,7 +29,6 @@ pub async fn request_verification(
 ) -> Result<(), matrix_sdk::Error> {
     request.accept().await?;
 
-    tracing::info!("Received verification request");
     let mut stream = request.changes();
     tokio::spawn(async move {
         while let Some(state) = stream.next().await {
@@ -42,7 +41,6 @@ pub async fn request_verification(
                     }
                 }
                 VerificationRequestState::Done => {
-                    tracing::info!("DONEE");
                     sender.send(Event::Done).await;
                     break;
                 }
@@ -87,13 +85,15 @@ async fn sas_verification_handler(sas: SasVerification, mut sender: EventSender<
                 sender.send(Event::VerifyEmojis(emojis)).await;
             }
             SasState::Done { .. } => {
-                tracing::info!("Sending event: Done");
                 sender.send(Event::Done).await;
                 break;
             }
             SasState::Cancelled(info) => {
                 sender.send(Event::Cancelled(info)).await;
                 break;
+            }
+            SasState::Confirmed => {
+                sender.send(Event::Confirmed).await;
             }
             _ => {}
         }

@@ -200,6 +200,7 @@ impl ClientWrapper {
     async fn devices(&self) -> Result<Vec<Device>, Error> {
         let client = self.inner();
         let user_id = client.user_id().ok_or(Error::NotAuthenticated)?;
+        let own_device_id = client.device_id().ok_or(Error::NotAuthenticated)?;
 
         let devices = client
             .encryption()
@@ -208,6 +209,10 @@ impl ClientWrapper {
             .map_err(Arc::new)?
             .devices()
             .map(Device::from)
+            .map(|mut device| {
+                device.is_self = device.id == own_device_id;
+                device
+            })
             .collect();
 
         Ok(devices)
