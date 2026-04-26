@@ -13,6 +13,8 @@ pub use matrix_sdk_ui::{
     timeline::{Message, MsgLikeKind, TimelineItem, TimelineItemContent},
 };
 
+pub const PAGINATION_SIZE: u16 = 100;
+
 /// Create a new timeline for the given room. This will subscribe to updates and paginate backwards to load the initial items.
 pub async fn timeline(
     room: Room,
@@ -49,17 +51,14 @@ pub async fn timeline(
                 })
                 .collect();
 
-            match tx.send(TimelineEvent::Updated(room_id, diffs)).await {
-                Ok(_) => (),
-                Err(error) => {
-                    tracing::error!("Failed to send update event: {}", error);
-                }
+            if let Err(error) = tx.send(TimelineEvent::Updated(room_id, diffs)).await {
+                tracing::error!("Failed to send update event: {}", error);
             };
         }
     });
 
     tokio::spawn(async move {
-        if let Err(error) = timeline.paginate_backwards(100).await {
+        if let Err(error) = timeline.paginate_backwards(PAGINATION_SIZE).await {
             tracing::error!("Failed to paginate backwards: {}", error);
         }
     });
@@ -98,6 +97,20 @@ impl Timeline {
             .send(TimelineEvent::Closed(self.room_id.clone()))
             .await;
     }
+
+    /// Paginates the timeline backwards, adding more events to the start of the timeline.
+    ///
+    /// Returns `true` if we hit the start of the timeline.
+    pub async fn paginate_backwards(&self) -> Result<bool, timeline::Error> {
+        self.inner.paginate_backwards(PAGINATION_SIZE).await
+    }
+
+    /// Paginates the timeline forwards, adding more events to the end of the timeline.
+    ///
+    /// Returns `true` if we hit the end of the timeline.
+    pub async fn paginate_forwards(&self) -> Result<bool, timeline::Error> {
+        self.inner.paginate_forwards(PAGINATION_SIZE).await
+    }
 }
 
 impl Drop for Timeline {
@@ -115,6 +128,10 @@ pub enum TimelineEvent {
     Updated(OwnedRoomId, Vec<TimelineDiff>),
     /// The timeline was closed and will no longer receive updates.
     Closed(OwnedRoomId),
+    /// The timeline hit the start.
+    Start(OwnedRoomId),
+    /// The timeline hit the end.
+    End(OwnedRoomId),
 }
 
 impl std::fmt::Display for TimelineEvent {
@@ -139,6 +156,8 @@ impl std::fmt::Display for TimelineEvent {
             TimelineEvent::Closed(room_id) => {
                 write!(f, "TimelineEvent::Closed({})", room_id,)
             }
+            TimelineEvent::Start(room_id) => write!(f, "TimelineEvent::Start({})", room_id),
+            TimelineEvent::End(room_id) => write!(f, "TimelineEvent::End({})", room_id),
         }
     }
 }

@@ -5,10 +5,10 @@ use iced::{Task, widget::image};
 use super::{Image, Instruction, Message, State};
 
 use crate::Action;
-use crate::screen::home::view::settings_popup;
+use crate::screen::home::{Timeline, view::settings_popup};
 use matrix::{
     bridge::{Action as MatrixAction, Event as MatrixEvent},
-    services::{Room, TimelineEvent, sas_verification, timeline},
+    services::{Room, TimelineEvent, sas_verification},
 };
 
 impl State {
@@ -100,20 +100,31 @@ impl State {
             MatrixEvent::RoomList(rooms) => self.rooms = rooms,
             MatrixEvent::TimelineEvent(event) => match event {
                 TimelineEvent::Initial(room_id, items) => {
-                    self.timelines.insert(room_id, items);
+                    let timeline = Timeline::from_items(items);
+                    self.timelines.insert(room_id, timeline);
                 }
                 TimelineEvent::Updated(room_id, diffs) => {
-                    let current_timeline = self
+                    let timeline = self
                         .timelines
                         .entry(room_id.clone())
-                        .or_insert_with(timeline::Vector::new);
+                        .or_insert_with(Timeline::new);
 
                     for diff in diffs {
-                        diff.apply(current_timeline);
+                        diff.apply(&mut timeline.items);
                     }
                 }
                 TimelineEvent::Closed(room_id) => {
                     self.timelines.remove(&room_id);
+                }
+                TimelineEvent::Start(room_id) => {
+                    if let Some(timeline) = self.timelines.get_mut(&room_id) {
+                        timeline.hit_start = true;
+                    }
+                }
+                TimelineEvent::End(room_id) => {
+                    if let Some(timeline) = self.timelines.get_mut(&room_id) {
+                        timeline.hit_end = true;
+                    }
                 }
             },
             MatrixEvent::DeviceList(devices) => {

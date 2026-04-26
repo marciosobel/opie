@@ -1,5 +1,9 @@
-use crate::{Action, Channel, Error, Event, bridge::Client, services::{TimelineEvent, sas_verification}};
 use super::State;
+use crate::{
+    Action, Channel, Error, Event,
+    bridge::Client,
+    services::{TimelineEvent, sas_verification},
+};
 
 pub async fn handle(
     action: Action,
@@ -45,6 +49,22 @@ pub async fn handle(
         Action::CloseTimeline(room_id) => {
             client.close_timeline(room_id.clone()).await;
             channel.send(TimelineEvent::Closed(room_id)).await;
+            None
+        }
+        Action::PaginateTimelineBackwards(room_id) => {
+            match client.paginate_timeline_backwards(room_id.clone()).await {
+                Ok(true) => channel.send(TimelineEvent::Start(room_id)).await,
+                Err(error) => channel.send(error).await,
+                _ => {}
+            };
+            None
+        }
+        Action::PaginateTimelineForwards(room_id) => {
+            match client.paginate_timeline_forwards(room_id.clone()).await {
+                Ok(true) => channel.send(TimelineEvent::Start(room_id)).await,
+                Err(error) => channel.send(error).await,
+                _ => {}
+            };
             None
         }
         Action::GetDevices => {

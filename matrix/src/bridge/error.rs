@@ -28,6 +28,9 @@ pub enum Error {
     #[error("Device {0} not found")]
     DeviceNotFound(OwnedDeviceId),
 
+    #[error("Timeline {0} not found")]
+    TimelineNotFound(OwnedRoomId),
+
     #[error("Sas verification error: {0}")]
     SasVerificationError(#[from] sas_verification::Error),
 }

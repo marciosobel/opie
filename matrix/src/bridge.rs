@@ -173,6 +173,42 @@ impl Client {
         }
     }
 
+    /// Paginates the timeline backwards, adding events to the start of the timeline.
+    ///
+    /// Returns `true` if we hit the start of the timeline.
+    pub(crate) async fn paginate_timeline_backwards(
+        &self,
+        room_id: OwnedRoomId,
+    ) -> Result<bool, Error> {
+        if let Some(timeline) = self.active_timelines.get(&room_id) {
+            tracing::info!("Paginating timeline backwards for room {}", room_id);
+            timeline
+                .paginate_backwards()
+                .await
+                .map_err(|e| Arc::new(e).into())
+        } else {
+            Err(Error::TimelineNotFound(room_id))
+        }
+    }
+
+    /// Paginates the timeline forwards, adding events to the end of the timeline.
+    ///
+    /// Returns `true` if we hit the end of the timeline.
+    pub(crate) async fn paginate_timeline_forwards(
+        &self,
+        room_id: OwnedRoomId,
+    ) -> Result<bool, Error> {
+        if let Some(timeline) = self.active_timelines.get(&room_id) {
+            tracing::info!("Paginating timeline backwards for room {}", room_id);
+            timeline
+                .paginate_forwards()
+                .await
+                .map_err(|e| Arc::new(e).into())
+        } else {
+            Err(Error::TimelineNotFound(room_id))
+        }
+    }
+
     /// Return a `SyncSettings` struct with room members lazy-loading,
     /// it will speed up the initial sync a lot with accounts in lots of rooms.
     /// See <https://spec.matrix.org/v1.6/client-server-api/#lazy-loading-room-members>.

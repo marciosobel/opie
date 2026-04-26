@@ -20,6 +20,10 @@ pub enum Action {
     GetTimeline(OwnedRoomId),
     /// Closes the timeline for the given room, aborting the background task that listens for updates.
     CloseTimeline(OwnedRoomId),
+    /// Paginates the timeline backwards for the given room, adding more events to the start of the list.
+    PaginateTimelineBackwards(OwnedRoomId),
+    /// Paginates the timeline forwards for the given room, adding more events to the end of the list.
+    PaginateTimelineForwards(OwnedRoomId),
     /// Get the devices this account is linked to
     GetDevices,
     /// Creates an emoji verification request with the specified `DeviceId`.
@@ -48,6 +52,12 @@ impl std::fmt::Display for Action {
             }
             Action::CloseTimeline(room_id) => {
                 write!(f, "CloseTimeline {{ room_id: {} }}", room_id)
+            }
+            Action::PaginateTimelineBackwards(room_id) => {
+                write!(f, "PaginateTimelineBackwards {{ room_id: {} }}", room_id)
+            }
+            Action::PaginateTimelineForwards(room_id) => {
+                write!(f, "PaginateTimelineForwards {{ room_id: {} }}", room_id)
             }
             Action::GetDevices => write!(f, "GetDevices"),
             Action::SasVerification(action) => {

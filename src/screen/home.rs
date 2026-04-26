@@ -6,7 +6,7 @@ use matrix::{
     bridge::{Action as MatrixAction, Bridge, Event as MatrixEvent},
     services::{
         room::{Room, RoomId},
-        timeline::{self, TimelineItem},
+        timeline,
         user::{UserId, UserInfo},
     },
 };
@@ -23,9 +23,16 @@ pub struct State {
     collapsible_dms_open: bool,
     focused_room: Option<RoomId>,
     room_avatar_cache: HashMap<RoomId, Image>,
-    timelines: HashMap<RoomId, timeline::Vector<Arc<TimelineItem>>>,
+    timelines: HashMap<RoomId, Timeline>,
     settings_popup: view::settings_popup::State,
     users: HashMap<UserId, User>,
+}
+
+#[derive(Debug, Clone)]
+struct Timeline {
+    items: timeline::Vector<Arc<timeline::TimelineItem>>,
+    hit_start: bool,
+    hit_end: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -104,5 +111,23 @@ impl User {
         };
 
         User { info, avatar }
+    }
+}
+
+impl Timeline {
+    fn new() -> Self {
+        Self {
+            items: timeline::Vector::new(),
+            hit_end: false,
+            hit_start: false,
+        }
+    }
+
+    fn from_items(items: timeline::Vector<Arc<timeline::TimelineItem>>) -> Self {
+        Self {
+            items,
+            hit_end: false,
+            hit_start: false,
+        }
     }
 }

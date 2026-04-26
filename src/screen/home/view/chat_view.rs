@@ -22,7 +22,11 @@ impl State {
         ]
         .spacing(10);
 
-        for item in timeline.iter() {
+        if timeline.hit_start {
+            chat_item = chat_item.push(text("Hit start of timeline"));
+        }
+
+        for item in &timeline.items {
             if let Some(item) = item.as_event() {
                 let item_content = item.content();
 
@@ -49,6 +53,10 @@ impl State {
                     chat_item = chat_item.push(element);
                 }
             }
+        }
+
+        if timeline.hit_end {
+            chat_item = chat_item.push(text("Hit start of timeline"));
         }
 
         chat_item.width(Length::Fill).into()
