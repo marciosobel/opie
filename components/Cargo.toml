@@ -1,0 +1,7 @@
+[package]
+name = "components"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+iced.workspace = true

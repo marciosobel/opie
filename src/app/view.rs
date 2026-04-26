@@ -55,10 +55,9 @@ impl App {
 }
 
 mod components {
-
     use super::Message;
     use lucide_icons::Icon;
-    use matrix_sdk::encryption::verification::Emoji;
+    use matrix::services::sas_verification::Emoji;
 
     use iced::{
         Alignment, Element, Font,

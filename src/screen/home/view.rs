@@ -8,8 +8,9 @@ const HORIZONTAL_PADDING: f32 = 10.0;
 
 use super::{Image, Message, State};
 
-mod main_view;
 pub(super) mod settings_popup;
+
+mod chat_view;
 mod sidebar;
 
 impl State {

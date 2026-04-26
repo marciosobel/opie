@@ -4,7 +4,8 @@ use iced::{
     widget::{button, column, container, image, row, sensor, space, text},
 };
 
-use crate::{components::collapsible, matrix::services::Room};
+use components::collapsible;
+use matrix::services::Room;
 
 type Element<'a> = iced::Element<'a, Message>;
 
@@ -34,14 +35,16 @@ impl State {
     }
 
     fn user_info(&self) -> Element<'_> {
-        let avatar: Element<'_> = match &self.user.avatar {
+        let user = self.own_user();
+
+        let avatar: Element<'_> = match &user.avatar {
             Image::Ready(handle) => image(handle)
                 .width(SIDEBAR_USER_AVATAR_SIZE)
                 .height(SIDEBAR_USER_AVATAR_SIZE)
                 .border_radius(100)
                 .into(),
             Image::None => {
-                let placeholder: Element<'_> = match self.user.display_name() {
+                let placeholder: Element<'_> = match user.display_name() {
                     Some(name) if name.len() > 0 => {
                         let first_letter = name.chars().next().unwrap();
                         text(first_letter).size(16).into()
@@ -64,14 +67,12 @@ impl State {
             }
         };
 
-        let name = match &self.user.display_name() {
+        let name = match &user.display_name() {
             Some(name) => name.clone(),
             None => "Unknown".to_string(),
         };
         let name = text(name).size(16);
-        let id = text(self.user.id().to_string())
-            .style(text::secondary)
-            .size(12);
+        let id = text(user.id().to_string()).style(text::secondary).size(12);
 
         let user_info_text = column![name, id].width(Length::Fill);
         let user_info_with_avatar = row![avatar, user_info_text]

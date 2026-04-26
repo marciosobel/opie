@@ -5,11 +5,12 @@ use rand::{RngExt, distr::Alphanumeric};
 
 use crate::{
     Action,
-    matrix::{
-        bridge::{self, Action as MatrixAction, Event},
-        services::{SasAction, sas_verification},
-    },
     screen::{auth, home},
+};
+
+use matrix::{
+    bridge::{Action as MatrixAction, Event},
+    services::{SasAction, sas_verification},
 };
 
 use super::{App, Instruction, Message, Screen, VerificationState};
@@ -65,7 +66,7 @@ impl App {
                 }
                 VerificationState::Stale => Task::none(),
                 VerificationState::Errored(error) => {
-                    let error = bridge::Error::SasVerificationError(error.clone());
+                    let error = matrix::Error::SasVerificationError(error.clone());
                     self.error = Arc::new(Some(error.into()));
                     Task::none()
                 }

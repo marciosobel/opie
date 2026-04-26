@@ -1,17 +1,15 @@
 use std::sync::Arc;
 
 use iced::{Task, widget::image};
-use matrix_sdk_ui::eyeball_im::Vector;
 
 use super::{Image, Instruction, Message, State};
 
 use crate::Action;
-use crate::matrix::services::sas_verification;
-use crate::matrix::{
-    bridge::{Action as MatrixAction, Event as MatrixEvent},
-    services::{Room, TimelineEvent},
-};
 use crate::screen::home::view::settings_popup;
+use matrix::{
+    bridge::{Action as MatrixAction, Event as MatrixEvent},
+    services::{Room, TimelineEvent, sas_verification, timeline},
+};
 
 impl State {
     pub fn update(&mut self, message: Message) -> Action<Instruction, Message> {
@@ -108,7 +106,7 @@ impl State {
                     let current_timeline = self
                         .timelines
                         .entry(room_id.clone())
-                        .or_insert_with(Vector::new);
+                        .or_insert_with(timeline::Vector::new);
 
                     for diff in diffs {
                         diff.apply(current_timeline);

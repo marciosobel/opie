@@ -1,0 +1,23 @@
+[package]
+name = "matrix"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+dirs.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+matrix-sdk.workspace = true
+matrix-sdk-ui.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+futures.workspace = true
+bytes.workspace = true
+lucide-icons.workspace = true
+iced.workspace = true
+
+[lib]
+path = "src/lib.rs"

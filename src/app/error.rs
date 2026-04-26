@@ -1,4 +1,4 @@
-use crate::matrix::bridge;
+use matrix::bridge;
 use std::sync::Arc;
 use thiserror::Error;
 

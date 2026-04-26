@@ -1,8 +1,4 @@
-use matrix_sdk::encryption::verification::{CancelInfo, Emoji};
-
-use crate::matrix::services::sas_verification::{
-    Error as SasVerificationError, Event as SasVerificationEvent,
-};
+use matrix::services::sas_verification::{CancelInfo, Emoji, Error, Event as SasVerificationEvent};
 
 /// The state of the ongoing verification state, if any.
 #[derive(Debug, Clone)]
@@ -18,7 +14,7 @@ pub enum VerificationState {
     /// Verification is waiting for the confirmation if the emojis match.
     Emoji([Emoji; 7]),
     /// Something went wrong in the verification flow.
-    Errored(SasVerificationError),
+    Errored(Error),
     /// The verification has been accepted by our side.
     Confirmed,
     /// A SAS verification flow has been created by us.

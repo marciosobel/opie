@@ -1,11 +1,43 @@
 [package]
 name = "opie"
+version.workspace = true
+edition.workspace = true
+
+[features]
+debug = ["iced/debug"]
+
+[dependencies]
+matrix.workspace = true
+components.workspace = true
+
+iced.workspace = true
+lucide-icons.workspace = true
+open.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+dirs.workspace = true
+anyhow.workspace = true
+bytes.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+rand.workspace = true
+
+[workspace]
+members = [
+  "components",
+  "matrix"
+]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
+[workspace.dependencies]
 anyhow = "1.0.101"
 bytes = "1.11.1"
+chrono = "0.4.44"
 dirs = "6.0.0"
 futures = "0.3.32"
 iced = { version = "0.14.0", features = ["advanced", "tokio", "image"] }
@@ -20,6 +52,5 @@ thiserror = "2.0.18"
 tokio = { version = "1.49.0", features = ["rt"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
-
-[features]
-debug = ["iced/debug", "iced/time-travel"]
+matrix = { path = "matrix" }
+components = { path = "components" }

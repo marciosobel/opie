@@ -25,6 +25,7 @@
             rust-analyzer
             rustfmt
             clippy
+            mold-wrapped
           ];
 
           buildInputs = with pkgs; [
@@ -37,6 +38,7 @@
 
           LD_LIBRARY_PATH = builtins.toString (pkgs.lib.makeLibraryPath buildInputs);
           RUST_SRC_PATH = pkgs.rustPlatform.rustLibSrc;
+          RUSTFLAGS = "-C link-arg=-fuse-ld=mold";
         };
       }
     );
