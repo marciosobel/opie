@@ -108,7 +108,7 @@ impl AuthenticatedState {
             }
             TimelineAction::PaginateForwards(room_id) => {
                 match self.paginate_timeline_forwards(room_id.clone()).await {
-                    Ok(true) => channel.send(TimelineEvent::Start(room_id)).await,
+                    Ok(true) => channel.send(TimelineEvent::End(room_id)).await,
                     Err(error) => channel.send(error).await,
                     _ => {}
                 };
