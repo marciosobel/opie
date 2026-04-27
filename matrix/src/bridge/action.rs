@@ -1,6 +1,10 @@
-use matrix_sdk::ruma::OwnedRoomId;
+use crate::services::sas_verification::Action as SasAction;
 
-use crate::services::sas_verification;
+mod auth;
+mod timeline;
+
+pub use auth::AuthAction;
+pub use timeline::TimelineAction;
 
 /// Actions (or commands) that can be sent to the Matrix bridge.
 #[derive(Debug, Clone)]
@@ -10,30 +14,16 @@ pub enum Action {
         homeserver: String,
         passphrase: String,
     },
-    /// Authenticates a user to the Matrix server.
-    Authenticate { username: String, password: String },
-    /// Attempt to restore a session from disk.
-    RestoreSession,
+    /// An action related to authentication.
+    Auth(AuthAction),
+    /// An action related to timelines.
+    Timeline(TimelineAction),
     /// Gets the list to all rooms
     ListAllRooms,
-    /// Gets the timeline for the given room.
-    GetTimeline(OwnedRoomId),
-    /// Closes the timeline for the given room, aborting the background task that listens for updates.
-    CloseTimeline(OwnedRoomId),
-    /// Paginates the timeline backwards for the given room, adding more events to the start of the list.
-    PaginateTimelineBackwards(OwnedRoomId),
-    /// Paginates the timeline forwards for the given room, adding more events to the end of the list.
-    PaginateTimelineForwards(OwnedRoomId),
     /// Get the devices this account is linked to
     GetDevices,
     /// Creates an emoji verification request with the specified `DeviceId`.
-    SasVerification(sas_verification::Action),
-}
-
-impl From<sas_verification::Action> for Action {
-    fn from(value: sas_verification::Action) -> Self {
-        Self::SasVerification(value)
-    }
+    SasVerification(SasAction),
 }
 
 impl std::fmt::Display for Action {
@@ -42,27 +32,25 @@ impl std::fmt::Display for Action {
             Action::CreateMatrixClient { homeserver, .. } => {
                 write!(f, "CreateMatrixClient {{ homeserver: {}, .. }}", homeserver,)
             }
-            Action::Authenticate { username, .. } => {
-                write!(f, "Authenticate {{ username: {} }}", username)
-            }
-            Action::RestoreSession => write!(f, "RestoreSession"),
+            Action::Auth(action) => write!(f, "Auth::{}", action),
+            Action::Timeline(action) => write!(f, "TimelineAction::{}", action),
             Action::ListAllRooms => write!(f, "ListAllRooms"),
-            Action::GetTimeline(room_id) => {
-                write!(f, "GetTimeline {{ room_id: {} }}", room_id)
-            }
-            Action::CloseTimeline(room_id) => {
-                write!(f, "CloseTimeline {{ room_id: {} }}", room_id)
-            }
-            Action::PaginateTimelineBackwards(room_id) => {
-                write!(f, "PaginateTimelineBackwards {{ room_id: {} }}", room_id)
-            }
-            Action::PaginateTimelineForwards(room_id) => {
-                write!(f, "PaginateTimelineForwards {{ room_id: {} }}", room_id)
-            }
             Action::GetDevices => write!(f, "GetDevices"),
-            Action::SasVerification(action) => {
-                write!(f, "SasVerification({})", action)
-            }
+            Action::SasVerification(action) => write!(f, "SasVerification::{}", action),
         }
     }
 }
+
+macro_rules! from {
+    ($from:ident => $to:ident) => {
+        impl From<$from> for Action {
+            fn from(value: $from) -> Self {
+                Self::$to(value)
+            }
+        }
+    };
+}
+
+from!(SasAction => SasVerification);
+from!(AuthAction => Auth);
+from!(TimelineAction => Timeline);

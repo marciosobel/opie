@@ -1,15 +1,18 @@
-use crate::Error;
+use crate::{Error, bridge::action::AuthAction};
 
-use super::{Action, Channel, Event, State};
+use super::{Action, Channel, Event, State, utils};
 
-pub(super) async fn handle(action: Action, channel: &mut Channel<Action, Event>) -> Option<State> {
+pub(super) async fn handle_action(
+    action: Action,
+    channel: &mut Channel<Action, Event>,
+) -> Option<State> {
     match action {
         Action::CreateMatrixClient {
             homeserver,
             passphrase,
-        } => super::create_bridge(channel, homeserver, passphrase).await,
-        Action::RestoreSession => super::restore_session(channel).await,
-        Action::Authenticate { .. } => {
+        } => utils::create_bridge(channel, homeserver, passphrase).await,
+        Action::Auth(AuthAction::RestoreSession) => utils::restore_session(channel).await,
+        Action::Auth(_) => {
             channel.send(Error::InvalidAction).await;
             None
         }

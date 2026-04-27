@@ -41,16 +41,6 @@ pub async fn timeline(
             let room_id = room_id.clone();
             tracing::info!("Received {} diffs", diffs.len());
 
-            let diffs = diffs
-                .into_iter()
-                .map(|d| {
-                    d.map(|item| {
-                        // TODO: gather info about user message, message kind and data.
-                        item
-                    })
-                })
-                .collect();
-
             if let Err(error) = tx.send(TimelineEvent::Updated(room_id, diffs)).await {
                 tracing::error!("Failed to send update event: {}", error);
             };

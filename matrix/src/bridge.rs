@@ -22,7 +22,7 @@ pub use error::Error;
 mod event;
 pub use event::Event;
 
-mod action;
+pub mod action;
 pub use action::Action;
 
 mod state;

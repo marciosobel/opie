@@ -9,7 +9,10 @@ use crate::{
 };
 
 use matrix::{
-    bridge::{Action as MatrixAction, Event},
+    bridge::{
+        Event,
+        action::{Action as MatrixAction, AuthAction},
+    },
     services::{SasAction, sas_verification},
 };
 
@@ -93,7 +96,7 @@ impl App {
                 tracing::info!("Matrix bridge stored in the app state");
 
                 self.screen = Screen::Loading("Checking session...".to_string());
-                bridge.send(MatrixAction::RestoreSession);
+                bridge.send(AuthAction::RestoreSession);
             }
             Event::Error(error) => {
                 tracing::error!("Received error event from matrix bridge: {:?}", error);
@@ -180,7 +183,7 @@ impl App {
                             homeserver,
                             passphrase,
                         })
-                        .send(MatrixAction::Authenticate { username, password });
+                        .send(AuthAction::Authenticate { username, password });
 
                     Task::none()
                 }

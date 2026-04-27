@@ -7,7 +7,10 @@ use super::{Image, Instruction, Message, State};
 use crate::Action;
 use crate::screen::home::{Timeline, view::settings_popup};
 use matrix::{
-    bridge::{Action as MatrixAction, Event as MatrixEvent},
+    bridge::{
+        Event as MatrixEvent,
+        action::{Action as MatrixAction, TimelineAction},
+    },
     services::{Room, TimelineEvent, sas_verification},
 };
 
@@ -33,12 +36,12 @@ impl State {
                             "Closing the current timeline before requesting another one"
                         );
                         self.bridge
-                            .send(MatrixAction::CloseTimeline(focused_room_id.clone()));
+                            .send(TimelineAction::Close(focused_room_id.clone()));
                     }
 
                     self.focused_room = Some(id.clone());
                     tracing::info!("Focusing room with id {}", id);
-                    self.bridge.send(MatrixAction::GetTimeline(id));
+                    self.bridge.send(TimelineAction::Get(id));
                 }
             },
             Message::LoadRoomAvatar(id) => {
