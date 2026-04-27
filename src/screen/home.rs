@@ -26,6 +26,7 @@ pub struct State {
     timelines: HashMap<RoomId, Timeline>,
     settings_popup: view::settings_popup::State,
     users: HashMap<UserId, User>,
+    message_inputs: HashMap<RoomId, String>,
 }
 
 #[derive(Debug, Clone)]
@@ -37,17 +38,23 @@ struct Timeline {
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    Timeline(TimelineMessage),
     MatrixEvent(MatrixEvent),
-    SpaceOpened(RoomId),
-    SpaceClosed(RoomId),
-    DirectMessagesOpened,
-    DirectMessagesClosed,
-    FocusRoom(RoomId),
     LoadRoomAvatar(RoomId),
     RoomAvatarLoaded(RoomId, Image),
-    OpenSettingsPopup,
-    CloseSettingsPopup,
+    SetSpaceOpen(RoomId, bool),
+    SetDirectMessagesOpen(bool),
+    SetSettingsPopupOpen(bool),
     SettingsPopup(view::settings_popup::Message),
+    MessageInputChanged(RoomId, String),
+    SendMessage(RoomId),
+}
+
+#[derive(Debug, Clone)]
+pub enum TimelineMessage {
+    PaginateForwards(RoomId),
+    PaginateBackwards(RoomId),
+    LoadTimeline(RoomId),
 }
 
 #[derive(Debug, Clone)]
@@ -93,6 +100,7 @@ impl State {
             timelines: HashMap::new(),
             settings_popup: view::settings_popup::State::new(),
             users,
+            message_inputs: HashMap::new(),
         }
     }
 

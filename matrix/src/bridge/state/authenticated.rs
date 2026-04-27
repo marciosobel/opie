@@ -114,6 +114,12 @@ impl AuthenticatedState {
                 };
                 None
             }
+            TimelineAction::SendMessage(room_id, content) => {
+                if let Err(error) = self.send_message(room_id, content).await {
+                    channel.send(error).await;
+                }
+                None
+            }
         }
     }
 }

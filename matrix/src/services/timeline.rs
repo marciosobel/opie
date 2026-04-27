@@ -2,7 +2,13 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use futures::StreamExt;
-use matrix_sdk::{Room, ruma::OwnedRoomId};
+use matrix_sdk::{
+    Room,
+    ruma::{
+        OwnedRoomId,
+        events::{AnyMessageLikeEventContent, room::message::RoomMessageEventContent},
+    },
+};
 use matrix_sdk_ui::timeline::{self, RoomExt, Timeline as MatrixTimeline};
 use tokio::{sync::mpsc, task::JoinHandle};
 
@@ -10,7 +16,10 @@ pub type TimelineDiff = VectorDiff<Arc<TimelineItem>>;
 pub use matrix_sdk::ruma::events::room::message::MessageType;
 pub use matrix_sdk_ui::{
     eyeball_im::{Vector, VectorDiff},
-    timeline::{Message, MsgLikeKind, TimelineItem, TimelineItemContent},
+    timeline::{
+        EventTimelineItem, Message, MsgLikeKind, TimelineItem, TimelineItemContent,
+        TimelineItemKind, VirtualTimelineItem,
+    },
 };
 
 pub const PAGINATION_SIZE: u16 = 100;
@@ -100,6 +109,15 @@ impl Timeline {
     /// Returns `true` if we hit the end of the timeline.
     pub async fn paginate_forwards(&self) -> Result<bool, timeline::Error> {
         self.inner.paginate_forwards(PAGINATION_SIZE).await
+    }
+
+    pub async fn send_message(&self, content: String) -> Result<(), timeline::Error> {
+        self.inner
+            .send(AnyMessageLikeEventContent::RoomMessage(
+                RoomMessageEventContent::text_plain(content),
+            ))
+            .await?;
+        Ok(())
     }
 }
 

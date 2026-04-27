@@ -1,3 +1,5 @@
+use crate::screen::home::TimelineMessage;
+
 use super::{DEPTH_PADDING, HORIZONTAL_PADDING, Image, Message, State};
 use iced::{
     Alignment, Color, ContentFit, Length, Padding, Theme,
@@ -79,7 +81,7 @@ impl State {
             .spacing(5)
             .align_y(Alignment::Center);
         let user_info = button(user_info_with_avatar)
-            .on_press(Message::OpenSettingsPopup)
+            .on_press(Message::SetSettingsPopupOpen(true))
             .padding(5)
             .style(|theme: &Theme, status: button::Status| {
                 let palette = theme.extended_palette();
@@ -157,8 +159,8 @@ impl State {
 
         let collapsible = collapsible(toggler)
             .width(Length::Fill)
-            .on_close(Message::SpaceClosed(space.id()))
-            .on_open(Message::SpaceOpened(space.id()))
+            .on_close(Message::SetSpaceOpen(space.id(), false))
+            .on_open(Message::SetSpaceOpen(space.id(), true))
             .content(content)
             .open(open)
             .padding(SIDEBAR_ROOM_PADDING.left((DEPTH_PADDING * depth as f32) + HORIZONTAL_PADDING))
@@ -185,7 +187,7 @@ impl State {
             .spacing(5);
 
         button(content)
-            .on_press(Message::FocusRoom(room.id()))
+            .on_press(Message::Timeline(TimelineMessage::LoadTimeline(room.id())))
             .padding(SIDEBAR_ROOM_PADDING.left((DEPTH_PADDING * depth as f32) + HORIZONTAL_PADDING))
             .width(Length::Fill)
             .style(move |theme: &Theme, status| sidebar_room_button_style(theme, status, focused))
@@ -283,8 +285,8 @@ impl State {
             dms = dms.push(self.room(dm, 1));
         }
         let dm_collapsible = collapsible(text("Direct Messages"))
-            .on_close(Message::DirectMessagesClosed)
-            .on_open(Message::DirectMessagesOpened)
+            .on_close(Message::SetDirectMessagesOpen(false))
+            .on_open(Message::SetDirectMessagesOpen(true))
             .open(self.collapsible_dms_open)
             .style(|theme: &Theme, status| sidebar_room_button_style(theme, status, false))
             .padding(SIDEBAR_ROOM_PADDING)

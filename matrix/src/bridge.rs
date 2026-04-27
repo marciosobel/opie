@@ -274,6 +274,21 @@ impl Client {
 
         Ok(devices)
     }
+
+    pub(crate) async fn send_message(
+        &mut self,
+        room_id: OwnedRoomId,
+        content: String,
+    ) -> Result<(), Error> {
+        let Some(timeline) = self.active_timelines.get_mut(&room_id) else {
+            return Err(Error::TimelineNotFound(room_id.clone()));
+        };
+
+        timeline
+            .send_message(content)
+            .await
+            .map_err(|e| Error::from(Arc::new(e)))
+    }
 }
 
 /// Creates an [`iced`] subscription for the matrix bridge.

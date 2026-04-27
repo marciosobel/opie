@@ -26,7 +26,7 @@ impl State {
 
         let modal = container(opaque(
             mouse_area(center(opaque(content)).padding(padding::vertical(160).horizontal(80)))
-                .on_press(Message::CloseSettingsPopup),
+                .on_press(Message::SetSettingsPopupOpen(false)),
         ))
         .style(|_| {
             container::Style::default().background(Color {

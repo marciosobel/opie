@@ -20,29 +20,33 @@ impl State {
             Message::MatrixEvent(event) => {
                 return self.matrix_event(event);
             }
-            Message::SpaceOpened(id) => {
-                self.collapsible_spaces.insert(id, true);
+            Message::SetDirectMessagesOpen(open) => self.collapsible_dms_open = open,
+            Message::SetSpaceOpen(id, open) => {
+                self.collapsible_spaces.insert(id, open);
             }
-            Message::SpaceClosed(id) => {
-                self.collapsible_spaces.insert(id, false);
-            }
-            Message::DirectMessagesOpened => self.collapsible_dms_open = true,
-            Message::DirectMessagesClosed => self.collapsible_dms_open = false,
-            Message::FocusRoom(id) => match &self.focused_room {
-                Some(focused_room_id) if *focused_room_id == id => {}
-                maybe_focused_room_id => {
-                    if let Some(focused_room_id) = maybe_focused_room_id {
-                        tracing::info!(
-                            "Closing the current timeline before requesting another one"
-                        );
-                        self.bridge
-                            .send(TimelineAction::Close(focused_room_id.clone()));
-                    }
-
-                    self.focused_room = Some(id.clone());
-                    tracing::info!("Focusing room with id {}", id);
-                    self.bridge.send(TimelineAction::Get(id));
+            Message::Timeline(message) => match message {
+                super::TimelineMessage::PaginateForwards(id) => {
+                    self.bridge.send(TimelineAction::PaginateForwards(id));
                 }
+                super::TimelineMessage::PaginateBackwards(id) => {
+                    self.bridge.send(TimelineAction::PaginateBackwards(id));
+                }
+                super::TimelineMessage::LoadTimeline(id) => match &self.focused_room {
+                    Some(focused_room_id) if *focused_room_id == id => {}
+                    maybe_focused_room_id => {
+                        if let Some(focused_room_id) = maybe_focused_room_id {
+                            tracing::info!(
+                                "Closing the current timeline before requesting another one"
+                            );
+                            self.bridge
+                                .send(TimelineAction::Close(focused_room_id.clone()));
+                        }
+
+                        self.focused_room = Some(id.clone());
+                        tracing::info!("Focusing room with id {}", id);
+                        self.bridge.send(TimelineAction::Get(id));
+                    }
+                },
             },
             Message::LoadRoomAvatar(id) => {
                 let Some(room) = self.rooms.get(&id) else {
@@ -62,8 +66,7 @@ impl State {
             Message::RoomAvatarLoaded(id, image) => {
                 self.room_avatar_cache.insert(id, image);
             }
-            Message::OpenSettingsPopup => self.settings_popup.open = true,
-            Message::CloseSettingsPopup => self.settings_popup.open = false,
+            Message::SetSettingsPopupOpen(open) => self.settings_popup.open = open,
             Message::SettingsPopup(message) => {
                 let action = self
                     .settings_popup
@@ -76,6 +79,23 @@ impl State {
                 };
 
                 return Action::task(instruction_task.chain(action.task));
+            }
+            Message::MessageInputChanged(id, text) => {
+                self.message_inputs.insert(id, text);
+            }
+            Message::SendMessage(room_id) => {
+                let Some(message) = self.message_inputs.insert(room_id.clone(), String::new())
+                else {
+                    return Action::none();
+                };
+
+                let message = message.trim();
+                if message.is_empty() {
+                    return Action::none();
+                }
+
+                self.bridge
+                    .send(TimelineAction::SendMessage(room_id, message.to_string()));
             }
         }
 

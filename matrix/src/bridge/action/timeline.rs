@@ -11,6 +11,8 @@ pub enum TimelineAction {
     PaginateBackwards(OwnedRoomId),
     /// Paginates the timeline forwards for the given room, adding more events to the end of the list.
     PaginateForwards(OwnedRoomId),
+    /// Sends the provided messsage to the provided room id.
+    SendMessage(OwnedRoomId, String),
 }
 
 impl std::fmt::Display for TimelineAction {
@@ -27,6 +29,9 @@ impl std::fmt::Display for TimelineAction {
             }
             TimelineAction::PaginateForwards(room_id) => {
                 write!(f, "PaginateForwards {{ room_id: {} }}", room_id)
+            }
+            TimelineAction::SendMessage(room_id, _) => {
+                write!(f, "SendMessage {{ room_id: {}, .. }}", room_id)
             }
         }
     }
