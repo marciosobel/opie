@@ -1,12 +1,17 @@
-# Opie
-Pure Rust Matrix client.
+<h1 align="center">❄️ Opie 🦀</h1>
+
+![A screenshot of Opie running](./readme_assets/screenshot.png)
+
+<p align="center">Pure Rust Matrix GUI client.</p>
+
+---
 
 Currently, the app is still a WIP. Here's the features that are planned/completed:
 - [x] Authentication
 - [x] Device SAS verification (both sending and receiveing)
 - [x] Receiveing messages
 - [x] Room listing and spaces navigation
-- [ ] Sending messages
+- [x] Sending messages
 - [ ] Sticker support
 - [ ] Poll support
 - [ ] Voice message support
@@ -15,12 +20,12 @@ Currently, the app is still a WIP. Here's the features that are planned/complete
 - [ ] Settings
 
 # Project structure
-This is an [iced](https://github.com/iced-rs/iced) application, using the [Matrix Rust SDK](https://github.com/matrix-org/matrix-rust-sdk) to interact with the Matrix servers. You can find anything related to the Matrix SDK in the [`src/matrix`](src/matrix) folder.
+This is an [iced](https://github.com/iced-rs/iced) application, using the [Matrix Rust SDK](https://github.com/matrix-org/matrix-rust-sdk) to interact with the Matrix servers. You can find anything related to the Matrix SDK in the [`matrix`](matrix) folder.
 
 This project relies heavily on async code. So the GUI interacts with the SDK using two MPSC channels: one where the GUI sends `Actions` and one where the SDK can send `Events` back to the GUI, like `Messages` in the Elm Architecture.
 
 # Local development
-The app contain a `debug` feature flag, you can run with it using the following:
+The app contains a `debug` feature flag, you can run with it using the following:
 ```
 $ cargo run --features debug
 ```
