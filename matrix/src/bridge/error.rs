@@ -10,10 +10,10 @@ pub enum Error {
     #[error("Failed to build the Matrix client: {0}")]
     ClientBuildError(#[from] Arc<crate::services::ClientBuildErrorKind>),
 
-    #[error("An error occurred in the Matrix SDK: {0}")]
+    #[error(transparent)]
     SdkError(#[from] Arc<matrix_sdk::Error>),
 
-    #[error("An error occurred in the Matrix SDK UI timeline: {0}")]
+    #[error(transparent)]
     TimelineError(#[from] Arc<matrix_sdk_ui::timeline::Error>),
 
     #[error("The action sent is not valid for the current state of the bridge")]
@@ -31,6 +31,6 @@ pub enum Error {
     #[error("Timeline {0} not found")]
     TimelineNotFound(OwnedRoomId),
 
-    #[error("Sas verification error: {0}")]
+    #[error(transparent)]
     SasVerificationError(#[from] sas_verification::Error),
 }

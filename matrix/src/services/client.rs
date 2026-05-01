@@ -11,10 +11,10 @@ use crate::session::{ClientSession, Session};
 
 #[derive(Debug, Error)]
 pub enum ClientBuildErrorKind {
-    #[error("Failed to build the Matrix client: {0}")]
+    #[error(transparent)]
     ClientBuildError(#[from] ClientBuildError),
 
-    #[error("A Matrix error ocurred: {0}")]
+    #[error(transparent)]
     MatrixError(#[from] Error),
 }
 
