@@ -107,14 +107,6 @@ impl State {
         match message {
             Message::ChangeTab(tab) => {
                 self.selected_tab = tab;
-                match self.selected_tab {
-                    Tab::Devices => {
-                        if matches!(self.device_state, DeviceState::None) {
-                            self.device_state = DeviceState::Loading;
-                            return Action::instruction(Instruction::GetDeviceList);
-                        }
-                    }
-                }
             }
             Message::DeviceList(devices) => self.device_state = DeviceState::Ready(devices),
             Message::OpenUrl(url) => {

@@ -1,7 +1,7 @@
 use components::separator;
 use iced::{
     Alignment, Element, Font, font,
-    widget::{button, column, container, rich_text, row, space, span, text},
+    widget::{button, column, container, rich_text, row, sensor, space, span, text},
 };
 use lucide_icons::Icon;
 use matrix::services::Device;
@@ -44,7 +44,9 @@ fn device_list(state: &DeviceState) -> Element<'_, Message> {
     };
 
     let device_list: Element<'_, Message> = match &state {
-        DeviceState::None => text("No action taken").into(),
+        DeviceState::None => sensor(text("Loading devices..."))
+            .on_show(|_| Message::RefreshDeviceList)
+            .into(),
         DeviceState::Loading => text("Loading devices...").into(),
         DeviceState::Ready(devices) => {
             let mut device_list = column![];
