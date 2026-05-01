@@ -118,15 +118,11 @@ impl State {
             let room_a = self.rooms.get(*a).expect("Failed to find child room");
             let room_b = self.rooms.get(*b).expect("Failed to find child room");
 
-            let name_a = room_a
-                .display_name()
-                .unwrap_or_else(|| room_a.id().to_string())
-                .to_lowercase();
-            let name_b = room_b
-                .display_name()
-                .unwrap_or_else(|| room_b.id().to_string())
-                .to_lowercase();
-            name_a.cmp(&name_b)
+            match (room_a.is_space(), room_b.is_space()) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                (_, _) => room_a.cmp(room_b),
+            }
         });
 
         for child_id in space.children() {
