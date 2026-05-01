@@ -2,7 +2,12 @@ use std::collections::{HashMap, HashSet};
 
 use bytes::Bytes;
 use futures::StreamExt;
-use matrix_sdk::{Client, Error, Room as MatrixRoom, media::MediaFormat, room::ParentSpace};
+use matrix_sdk::{
+    Client, Error, Room as MatrixRoom, RoomMemberships,
+    media::{MediaFormat, MediaThumbnailSettings},
+    room::ParentSpace,
+    ruma::UInt,
+};
 
 pub use matrix_sdk::ruma::OwnedRoomId as RoomId;
 use tracing::{info, warn};
@@ -55,9 +60,15 @@ pub struct Room {
     display_name: Option<String>,
     children: HashSet<RoomId>,
     parents: HashSet<RoomId>,
-    is_direct: bool,
-    is_space: bool,
+    kind: RoomKind,
     avatar: Option<Bytes>,
+}
+
+#[derive(Debug, Clone)]
+enum RoomKind {
+    Direct,
+    Space,
+    Other,
 }
 
 impl Room {
@@ -66,11 +77,18 @@ impl Room {
         let display_name = matrix_room
             .cached_display_name()
             .map(|display_name| display_name.to_string());
-        let is_direct = matrix_room.is_direct().await?;
-        let is_space = matrix_room.is_space();
-        let avatar = match matrix_room.avatar(MediaFormat::File).await? {
-            Some(bytes) => Some(Bytes::from_owner(bytes)),
-            None => None,
+
+        let kind = if matrix_room.is_space() {
+            RoomKind::Space
+        } else if matrix_room.is_direct().await? {
+            RoomKind::Direct
+        } else {
+            RoomKind::Other
+        };
+
+        let avatar = match kind {
+            RoomKind::Direct => get_direct_room_avatar(&matrix_room).await?,
+            _ => get_space_room_avatar(&matrix_room).await?,
         };
 
         let mut parents = HashSet::new();
@@ -103,20 +121,19 @@ impl Room {
             display_name,
             children: HashSet::new(),
             parents,
-            is_direct,
-            is_space,
+            kind,
             avatar,
         })
     }
 
     /// Returns if the room is a direct message.
     pub fn is_direct(&self) -> bool {
-        self.is_direct
+        matches!(self.kind, RoomKind::Direct)
     }
 
     /// Returns if the room is a space.
     pub fn is_space(&self) -> bool {
-        self.is_space
+        matches!(self.kind, RoomKind::Space)
     }
 
     /// Returns if the room is a group. A group is a room that has no parents.
@@ -148,6 +165,43 @@ impl Room {
     pub fn avatar(&self) -> Option<&Bytes> {
         self.avatar.as_ref()
     }
+}
+
+async fn get_direct_room_avatar(room: &MatrixRoom) -> Result<Option<Bytes>, Error> {
+    let own_id = room.own_user_id();
+    let users_in_room = room.members(RoomMemberships::JOIN).await?;
+    let Some(other_member) = users_in_room.iter().find(|m| m.user_id() != own_id) else {
+        tracing::warn!("Direct room {} has no other members", room.room_id());
+        return Ok(None);
+    };
+
+    let avatar = match other_member
+        .avatar(MediaFormat::Thumbnail(MediaThumbnailSettings::new(
+            UInt::new(64).unwrap(),
+            UInt::new(64).unwrap(),
+        )))
+        .await?
+    {
+        Some(bytes) => Some(Bytes::from_owner(bytes)),
+        None => None,
+    };
+
+    Ok(avatar)
+}
+
+async fn get_space_room_avatar(room: &MatrixRoom) -> Result<Option<Bytes>, Error> {
+    let avatar = match room
+        .avatar(MediaFormat::Thumbnail(MediaThumbnailSettings::new(
+            UInt::new(64).unwrap(),
+            UInt::new(64).unwrap(),
+        )))
+        .await?
+    {
+        Some(bytes) => Some(Bytes::from_owner(bytes)),
+        None => None,
+    };
+
+    Ok(avatar)
 }
 
 impl PartialEq for Room {

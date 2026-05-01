@@ -48,16 +48,22 @@ impl AuthenticatedState {
                 self.sas_verification.send(action);
                 None
             }
-            Action::ListAllRooms => match self.get_joined_rooms().await {
-                Ok(rooms) => {
-                    channel.send(Event::RoomList(rooms)).await;
-                    None
-                }
-                Err(error) => {
-                    channel.send(error).await;
-                    None
-                }
-            },
+            Action::ListAllRooms => {
+                let sender = channel.sender();
+                let client = self.client.clone();
+                tokio::spawn(async move {
+                    let mut tx = sender;
+                    match client.get_joined_rooms().await {
+                        Ok(rooms) => {
+                            tx.send(Event::RoomList(rooms)).await;
+                        }
+                        Err(error) => {
+                            tx.send(error).await;
+                        }
+                    }
+                });
+                None
+            }
             Action::Timeline(action) => self.handle_timeline_action(action, channel).await,
             Action::GetDevices => {
                 match self.client.devices().await {

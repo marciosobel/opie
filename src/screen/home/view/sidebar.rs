@@ -1,7 +1,7 @@
 use super::{DEPTH_PADDING, HORIZONTAL_PADDING, Image, Message, State};
 use iced::{
     Alignment, Color, ContentFit, Length, Padding, Theme,
-    widget::{button, center, column, container, image, row, sensor, space, text},
+    widget::{button, center, column, container, image, row, scrollable, sensor, space, text},
 };
 
 use components::collapsible;
@@ -20,11 +20,13 @@ const SIDEBAR_USER_AVATAR_SIZE: u32 = 40;
 
 impl State {
     pub(super) fn sidebar(&self) -> Element<'_> {
-        let sidebar_column: Element<'_> = if self.is_fetching_rooms {
+        let rooms: Element<'_> = if self.is_fetching_rooms {
             center(text("Loading rooms...")).into()
         } else {
-            column![self.spaces(), space::vertical(), self.user_info()].into()
+            self.spaces()
         };
+
+        let sidebar_column = column![rooms, self.user_info()];
 
         container(sidebar_column)
             .style(|theme: &iced::Theme| {
@@ -297,11 +299,12 @@ impl State {
             spaces = spaces.push(self.space(space, 0))
         }
 
-        column([
+        scrollable(column([
             dm_collapsible.into(),
             group_collapsible.into(),
             spaces.into(),
-        ])
+        ]))
+        .height(Length::Fill)
         .into()
     }
 }
