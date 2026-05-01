@@ -1,7 +1,7 @@
 use chrono::DateTime;
 use components::separator;
 use iced::{
-    Alignment, Element, Length,
+    Alignment, Element, Length, Padding,
     widget::{center, column, container, row, scrollable, sensor, space, text, text_input},
 };
 use matrix::services::{
@@ -141,7 +141,13 @@ impl State {
                 MsgLikeKind::Poll(poll_state) => {
                     text!("Poll: {}", poll_state.results().question).into()
                 }
-                MsgLikeKind::Redacted => text("Redacted.").into(),
+                MsgLikeKind::Redacted => {
+                    // Redacted messages are often deleted ones or some kind of information
+                    // that shouldn't be seen. In the future we could add a setting to whether
+                    // or not to see when a redacted message appears, but, for now, we just
+                    // omit it.
+                    space().into()
+                }
                 MsgLikeKind::UnableToDecrypt(_) => text!("Encrypted message").into(),
                 MsgLikeKind::Other(message) => text!("Unknown message type: {:#?}", message).into(),
             },
@@ -183,17 +189,20 @@ impl State {
                 text("New messages").size(12).style(text::danger).into()
             }
             VirtualTimelineItem::TimelineStart => {
-                let element = text("You've hit the start of the conversation!")
+                let hit_start_message = text("You've hit the start of the conversation!")
                     .size(12)
                     .style(text::secondary);
+                let mut element: Element<'_, Message> = container(hit_start_message)
+                    .padding(Padding::ZERO.vertical(10))
+                    .into();
 
-                if room.timeline.hit_start {
-                    element.into()
-                } else {
-                    sensor(element)
+                if !room.timeline.hit_start {
+                    element = sensor(element)
                         .on_show(|_| Message::TimelineStart(room.id.clone()))
-                        .into()
-                }
+                        .into();
+                };
+
+                container(element).center_x(Length::Fill).into()
             }
         };
 

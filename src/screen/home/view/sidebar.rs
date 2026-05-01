@@ -4,7 +4,8 @@ use iced::{
     widget::{button, center, column, container, image, row, scrollable, sensor, space, text},
 };
 
-use components::collapsible;
+use components::collapsible::Collapsible;
+use lucide_icons::Icon;
 use matrix::services::Room;
 
 type Element<'a> = iced::Element<'a, Message>;
@@ -82,7 +83,7 @@ impl State {
 
         let user_info_text = column![name, id].width(Length::Fill);
         let user_info_with_avatar = row![avatar, user_info_text]
-            .spacing(5)
+            .spacing(10)
             .align_y(Alignment::Center);
         let user_info = button(user_info_with_avatar)
             .on_press(Message::ToggleSettingsPopupOpen)
@@ -158,16 +159,9 @@ impl State {
             .align_y(Alignment::Center)
             .spacing(5);
 
-        let collapsible = collapsible(toggler)
-            .width(Length::Fill)
-            .on_close(Message::ToggleSpaceOpen(space.id()))
-            .on_open(Message::ToggleSpaceOpen(space.id()))
-            .content(content)
-            .open(open)
+        collapsible(toggler, content, open, Message::ToggleSpaceOpen(space.id()))
             .padding(SIDEBAR_ROOM_PADDING.left((DEPTH_PADDING * depth as f32) + HORIZONTAL_PADDING))
-            .style(move |theme: &Theme, status| sidebar_room_button_style(theme, status, false));
-
-        collapsible.into()
+            .into()
     }
 
     fn room<'a>(&'a self, room: &'a Room, depth: u8) -> Element<'a> {
@@ -270,28 +264,25 @@ impl State {
         for dm in direct_rooms {
             dms = dms.push(self.room(dm, 1));
         }
-        let dm_collapsible = collapsible(text("Direct Messages"))
-            .on_close(Message::ToggleDirectMessagesOpen)
-            .on_open(Message::ToggleDirectMessagesOpen)
-            .open(self.collapsibles.dms)
-            .style(|theme: &Theme, status| sidebar_room_button_style(theme, status, false))
-            .padding(SIDEBAR_ROOM_PADDING)
-            .width(Length::Fill)
-            .content(dms);
+
+        let dms = collapsible(
+            icon_label(Icon::Mail, "Direct Messages"),
+            dms,
+            self.collapsibles.dms,
+            Message::ToggleDirectMessagesOpen,
+        );
 
         let group_rooms = root_parents.iter().filter(|room| room.is_group());
         let mut groups = column![];
         for group in group_rooms {
             groups = groups.push(self.room(group, 1));
         }
-        let group_collapsible = collapsible(text("Groups"))
-            .on_close(Message::ToggleGroupMessagesOpen)
-            .on_open(Message::ToggleGroupMessagesOpen)
-            .open(self.collapsibles.groups)
-            .style(|theme: &Theme, status| sidebar_room_button_style(theme, status, false))
-            .padding(SIDEBAR_ROOM_PADDING)
-            .width(Length::Fill)
-            .content(groups);
+        let groups = collapsible(
+            icon_label(Icon::MessagesSquare, "Groups"),
+            groups,
+            self.collapsibles.groups,
+            Message::ToggleGroupMessagesOpen,
+        );
 
         let space_rooms = root_parents.iter().filter(|room| room.is_space());
         let mut spaces = column![];
@@ -299,14 +290,26 @@ impl State {
             spaces = spaces.push(self.space(space, 0))
         }
 
-        scrollable(column([
-            dm_collapsible.into(),
-            group_collapsible.into(),
-            spaces.into(),
-        ]))
-        .height(Length::Fill)
-        .into()
+        scrollable(column([dms.into(), groups.into(), spaces.into()]))
+            .height(Length::Fill)
+            .into()
     }
+}
+
+fn collapsible<'a>(
+    trigger_content: impl Into<Element<'a>>,
+    content: impl Into<Element<'a>>,
+    open: bool,
+    on_toggle: Message,
+) -> components::collapsible::Collapsible<'a, Message> {
+    Collapsible::new(trigger_content)
+        .on_close(on_toggle.clone())
+        .on_open(on_toggle)
+        .open(open)
+        .style(|theme: &Theme, status| sidebar_room_button_style(theme, status, false))
+        .padding(SIDEBAR_ROOM_PADDING)
+        .width(Length::Fill)
+        .content(content)
 }
 
 fn sidebar_room_button_style(
@@ -342,4 +345,11 @@ fn sidebar_room_button_style(
             style.with_background(palette.strongest.color)
         }
     }
+}
+
+fn icon_label<'a>(icon: Icon, label: &'a str) -> Element<'a> {
+    row![icon.widget(), text(label)]
+        .spacing(10)
+        .align_y(Alignment::Center)
+        .into()
 }
