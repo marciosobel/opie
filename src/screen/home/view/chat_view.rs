@@ -73,7 +73,12 @@ impl State {
                         (space, message_content)
                     } else {
                         let (username, pfp) = self.get_user_username_and_profile_picture(item);
-                        let message_content = column![text(username), message_content].spacing(2.5);
+                        let username = text(username).font(iced::Font {
+                            weight: iced::font::Weight::Semibold,
+                            ..iced::Font::DEFAULT
+                        });
+
+                        let message_content = column![username, message_content].spacing(2.5);
                         (pfp, message_content.into())
                     };
 
