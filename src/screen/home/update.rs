@@ -148,7 +148,10 @@ impl State {
 
     fn matrix_event(&mut self, event: MatrixEvent) -> Action<Instruction, Message> {
         match event {
-            MatrixEvent::RoomList(rooms) => self.rooms = rooms,
+            MatrixEvent::RoomList(rooms) => {
+                self.is_fetching_rooms = false;
+                self.rooms = rooms;
+            }
             MatrixEvent::TimelineEvent(event) => match event {
                 TimelineEvent::Initial(room_id, items) => {
                     if !self.focused_rooms.contains_key(&room_id) {
