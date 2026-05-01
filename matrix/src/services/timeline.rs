@@ -37,7 +37,7 @@ pub async fn timeline(
 
     // Send the initial items as an update event
     _ = tx
-        .send(TimelineEvent::Initial(room_id.clone(), items))
+        .send(TimelineEvent::Initial(room_id.clone(), items.clone()))
         .await;
 
     let tx_clone = tx.clone();
@@ -45,12 +45,20 @@ pub async fn timeline(
     let task = tokio::spawn(async move {
         let tx = tx_clone;
         let room_id = room_id_clone;
+        let mut current_items: Vector<Arc<TimelineItem>> = items;
 
         while let Some(diffs) = stream.next().await {
             let room_id = room_id.clone();
             tracing::info!("Received {} diffs", diffs.len());
 
-            if let Err(error) = tx.send(TimelineEvent::Updated(room_id, diffs)).await {
+            for diff in diffs {
+                diff.apply(&mut current_items);
+            }
+
+            if let Err(error) = tx
+                .send(TimelineEvent::Updated(room_id, current_items.clone()))
+                .await
+            {
                 tracing::error!("Failed to send update event: {}", error);
             };
         }
@@ -133,7 +141,7 @@ pub enum TimelineEvent {
     /// The timeline was initialized with the given items.
     Initial(OwnedRoomId, Vector<Arc<TimelineItem>>),
     /// The timeline was updated with the given diffs.
-    Updated(OwnedRoomId, Vec<TimelineDiff>),
+    Updated(OwnedRoomId, Vector<Arc<TimelineItem>>),
     /// The timeline was closed and will no longer receive updates.
     Closed(OwnedRoomId),
     /// The timeline hit the start.

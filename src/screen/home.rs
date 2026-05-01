@@ -19,14 +19,30 @@ pub struct State {
     bridge: Bridge,
     user_id: UserId,
     rooms: HashMap<RoomId, Arc<Room>>,
-    collapsible_spaces: HashMap<RoomId, bool>,
-    collapsible_dms_open: bool,
-    focused_room: Option<RoomId>,
-    room_avatar_cache: HashMap<RoomId, Image>,
-    timelines: HashMap<RoomId, Timeline>,
-    settings_popup: view::settings_popup::State,
+    collapsibles: Collapsibles,
+    image_cache: ImageCache,
+    focused_rooms: HashMap<RoomId, FocusedRoom>,
+    settings: view::settings_popup::State,
     users: HashMap<UserId, User>,
-    message_inputs: HashMap<RoomId, String>,
+}
+
+#[derive(Debug, Clone)]
+struct FocusedRoom {
+    id: RoomId,
+    message_draft: String,
+    timeline: Timeline,
+}
+
+#[derive(Debug, Clone, Default)]
+struct Collapsibles {
+    spaces: HashMap<RoomId, bool>,
+    dms: bool,
+    groups: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ImageCache {
+    rooms: HashMap<RoomId, Image>,
 }
 
 #[derive(Debug, Clone)]
@@ -38,23 +54,28 @@ struct Timeline {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Timeline(TimelineMessage),
     MatrixEvent(MatrixEvent),
+
+    /// Loads more messages at the end of the timeline items.
+    PaginateForwards(RoomId),
+    /// Loads more messages at the start of the timeline items.
+    PaginateBackwards(RoomId),
+    OpenTimeline(RoomId),
+    CloseTimeline(RoomId),
+    TimelineStart(RoomId),
+
     LoadRoomAvatar(RoomId),
     RoomAvatarLoaded(RoomId, Image),
-    SetSpaceOpen(RoomId, bool),
-    SetDirectMessagesOpen(bool),
-    SetSettingsPopupOpen(bool),
-    SettingsPopup(view::settings_popup::Message),
+
+    ToggleSpaceOpen(RoomId),
+    ToggleDirectMessagesOpen,
+    ToggleGroupMessagesOpen,
+    ToggleSettingsPopupOpen,
+
     MessageInputChanged(RoomId, String),
     SendMessage(RoomId),
-}
 
-#[derive(Debug, Clone)]
-pub enum TimelineMessage {
-    PaginateForwards(RoomId),
-    PaginateBackwards(RoomId),
-    LoadTimeline(RoomId),
+    SettingsPopup(view::settings_popup::Message),
 }
 
 #[derive(Debug, Clone)]
@@ -92,15 +113,12 @@ impl State {
         Self {
             bridge,
             user_id,
-            rooms: HashMap::new(),
-            collapsible_spaces: HashMap::new(),
-            collapsible_dms_open: false,
-            focused_room: None,
-            room_avatar_cache: HashMap::new(),
-            timelines: HashMap::new(),
-            settings_popup: view::settings_popup::State::new(),
             users,
-            message_inputs: HashMap::new(),
+            rooms: HashMap::new(),
+            focused_rooms: HashMap::new(),
+            collapsibles: Collapsibles::default(),
+            image_cache: ImageCache::default(),
+            settings: view::settings_popup::State::new(),
         }
     }
 
@@ -131,7 +149,7 @@ impl Timeline {
         }
     }
 
-    fn from_items(items: timeline::Vector<Arc<timeline::TimelineItem>>) -> Self {
+    fn with_items(items: timeline::Vector<Arc<timeline::TimelineItem>>) -> Self {
         Self {
             items,
             hit_end: false,
@@ -139,3 +157,29 @@ impl Timeline {
         }
     }
 }
+
+impl FocusedRoom {
+    fn new(room_id: RoomId) -> Self {
+        Self {
+            id: room_id,
+            message_draft: String::new(),
+            timeline: Timeline::new(),
+        }
+    }
+
+    fn with_timeline(room_id: RoomId, timeline: Timeline) -> Self {
+        Self {
+            id: room_id,
+            message_draft: String::new(),
+            timeline,
+        }
+    }
+}
+
+impl PartialEq for FocusedRoom {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for FocusedRoom {}

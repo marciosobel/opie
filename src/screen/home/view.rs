@@ -17,16 +17,16 @@ impl State {
     pub fn view(&self) -> Element<'_, Message> {
         let base = row![self.sidebar(), self.main_view()];
 
-        if !self.settings_popup.open {
+        if !self.settings.open {
             return base.into();
         }
 
-        let content = container(self.settings_popup.view().map(Message::SettingsPopup))
+        let content = container(self.settings.view().map(Message::SettingsPopup))
             .style(|theme| container::background(theme.palette().background));
 
         let modal = container(opaque(
             mouse_area(center(opaque(content)).padding(padding::vertical(160).horizontal(80)))
-                .on_press(Message::SetSettingsPopupOpen(false)),
+                .on_press(Message::ToggleSettingsPopupOpen),
         ))
         .style(|_| {
             container::Style::default().background(Color {

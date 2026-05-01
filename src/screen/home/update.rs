@@ -5,6 +5,7 @@ use iced::{Task, widget::image};
 use super::{Image, Instruction, Message, State};
 
 use crate::Action;
+use crate::screen::home::FocusedRoom;
 use crate::screen::home::{Timeline, view::settings_popup};
 use matrix::{
     bridge::{
@@ -20,34 +21,44 @@ impl State {
             Message::MatrixEvent(event) => {
                 return self.matrix_event(event);
             }
-            Message::SetDirectMessagesOpen(open) => self.collapsible_dms_open = open,
-            Message::SetSpaceOpen(id, open) => {
-                self.collapsible_spaces.insert(id, open);
+            Message::PaginateForwards(id) => {
+                self.bridge.send(TimelineAction::PaginateForwards(id));
             }
-            Message::Timeline(message) => match message {
-                super::TimelineMessage::PaginateForwards(id) => {
-                    self.bridge.send(TimelineAction::PaginateForwards(id));
+            Message::PaginateBackwards(id) => {
+                self.bridge.send(TimelineAction::PaginateBackwards(id));
+            }
+            Message::OpenTimeline(id) => match self.focused_rooms.get(&id) {
+                Some(_) => {
+                    // Timeline is already open. Nothing to do.
                 }
-                super::TimelineMessage::PaginateBackwards(id) => {
-                    self.bridge.send(TimelineAction::PaginateBackwards(id));
-                }
-                super::TimelineMessage::LoadTimeline(id) => match &self.focused_room {
-                    Some(focused_room_id) if *focused_room_id == id => {}
-                    maybe_focused_room_id => {
-                        if let Some(focused_room_id) = maybe_focused_room_id {
-                            tracing::info!(
-                                "Closing the current timeline before requesting another one"
-                            );
-                            self.bridge
-                                .send(TimelineAction::Close(focused_room_id.clone()));
-                        }
-
-                        self.focused_room = Some(id.clone());
-                        tracing::info!("Focusing room with id {}", id);
-                        self.bridge.send(TimelineAction::Get(id));
+                None => {
+                    if !self.rooms.contains_key(&id) {
+                        tracing::error!(
+                            "Tried to focus room {} but it is not present in room map.",
+                            id.to_string()
+                        );
+                        return Action::none();
                     }
-                },
+
+                    // TODO: Support having multiple rooms opened
+                    for room in self.focused_rooms.values() {
+                        self.bridge.send(TimelineAction::Close(room.id.clone()));
+                    }
+
+                    let focused_room = FocusedRoom::new(id.clone());
+                    self.focused_rooms.insert(id.clone(), focused_room);
+                    self.bridge.send(TimelineAction::Get(id));
+                }
             },
+            Message::CloseTimeline(id) => {
+                self.focused_rooms.remove(&id);
+                self.bridge.send(TimelineAction::Close(id));
+            }
+            Message::TimelineStart(id) => {
+                if let Some(room) = self.focused_rooms.get_mut(&id) {
+                    room.timeline.hit_start = true;
+                }
+            }
             Message::LoadRoomAvatar(id) => {
                 let Some(room) = self.rooms.get(&id) else {
                     tracing::error!(
@@ -64,14 +75,48 @@ impl State {
                 return Action::task(task);
             }
             Message::RoomAvatarLoaded(id, image) => {
-                self.room_avatar_cache.insert(id, image);
+                self.image_cache.rooms.insert(id, image);
             }
-            Message::SetSettingsPopupOpen(open) => self.settings_popup.open = open,
+            Message::ToggleSpaceOpen(id) => {
+                let old = self.collapsibles.spaces.get(&id).unwrap_or(&false);
+                self.collapsibles.spaces.insert(id, !*old);
+            }
+            Message::ToggleDirectMessagesOpen => {
+                self.collapsibles.dms = !self.collapsibles.dms;
+            }
+            Message::ToggleGroupMessagesOpen => {
+                self.collapsibles.groups = !self.collapsibles.groups;
+            }
+            Message::ToggleSettingsPopupOpen => self.settings.open = !self.settings.open,
+            Message::MessageInputChanged(id, text) => {
+                if let Some(room) = self.focused_rooms.get_mut(&id) {
+                    room.message_draft = text;
+                } else {
+                    tracing::warn!(
+                        "Received MessageInputChanged for room id {} but it is not currently focused.",
+                        id
+                    );
+                };
+            }
+            Message::SendMessage(id) => {
+                let Some(room) = self.focused_rooms.get_mut(&id) else {
+                    tracing::warn!(
+                        "Received SendMessage for room id {} but it is not currently focused.",
+                        id
+                    );
+                    return Action::none();
+                };
+
+                let message = room.message_draft.trim().to_string();
+                room.message_draft = String::new();
+
+                if !message.is_empty() {
+                    self.bridge
+                        .send(TimelineAction::SendMessage(id, message.to_string()));
+                }
+            }
             Message::SettingsPopup(message) => {
-                let action = self
-                    .settings_popup
-                    .update(message)
-                    .map(Message::SettingsPopup);
+                let action = self.settings.update(message).map(Message::SettingsPopup);
 
                 let instruction_task = match action.instruction {
                     Some(instruction) => self.handle_settings_instruction(instruction),
@@ -79,23 +124,6 @@ impl State {
                 };
 
                 return Action::task(instruction_task.chain(action.task));
-            }
-            Message::MessageInputChanged(id, text) => {
-                self.message_inputs.insert(id, text);
-            }
-            Message::SendMessage(room_id) => {
-                let Some(message) = self.message_inputs.insert(room_id.clone(), String::new())
-                else {
-                    return Action::none();
-                };
-
-                let message = message.trim();
-                if message.is_empty() {
-                    return Action::none();
-                }
-
-                self.bridge
-                    .send(TimelineAction::SendMessage(room_id, message.to_string()));
             }
         }
 
@@ -123,36 +151,34 @@ impl State {
             MatrixEvent::RoomList(rooms) => self.rooms = rooms,
             MatrixEvent::TimelineEvent(event) => match event {
                 TimelineEvent::Initial(room_id, items) => {
-                    let timeline = Timeline::from_items(items);
-                    self.timelines.insert(room_id, timeline);
+                    if !self.focused_rooms.contains_key(&room_id) {
+                        let timeline = Timeline::with_items(items);
+                        let focused_room = FocusedRoom::with_timeline(room_id.clone(), timeline);
+                        self.focused_rooms.insert(room_id, focused_room);
+                    }
                 }
-                TimelineEvent::Updated(room_id, diffs) => {
-                    let timeline = self
-                        .timelines
-                        .entry(room_id.clone())
-                        .or_insert_with(Timeline::new);
-
-                    for diff in diffs {
-                        diff.apply(&mut timeline.items);
+                TimelineEvent::Updated(room_id, updated) => {
+                    if let Some(room) = self.focused_rooms.get_mut(&room_id) {
+                        room.timeline.items = updated;
                     }
                 }
                 TimelineEvent::Closed(room_id) => {
-                    self.timelines.remove(&room_id);
+                    self.focused_rooms.remove(&room_id);
                 }
                 TimelineEvent::Start(room_id) => {
-                    if let Some(timeline) = self.timelines.get_mut(&room_id) {
-                        timeline.hit_start = true;
+                    if let Some(room) = self.focused_rooms.get_mut(&room_id) {
+                        room.timeline.hit_start = true;
                     }
                 }
                 TimelineEvent::End(room_id) => {
-                    if let Some(timeline) = self.timelines.get_mut(&room_id) {
-                        timeline.hit_end = true;
+                    if let Some(room) = self.focused_rooms.get_mut(&room_id) {
+                        room.timeline.hit_end = true;
                     }
                 }
             },
             MatrixEvent::DeviceList(devices) => {
-                self.settings_popup
-                    .update(settings_popup::Message::DeviceList(devices));
+                use settings_popup::Message;
+                self.settings.update(Message::DeviceList(devices));
             }
             _ => {}
         }

@@ -1,5 +1,3 @@
-use crate::screen::home::TimelineMessage;
-
 use super::{DEPTH_PADDING, HORIZONTAL_PADDING, Image, Message, State};
 use iced::{
     Alignment, Color, ContentFit, Length, Padding, Theme,
@@ -81,7 +79,7 @@ impl State {
             .spacing(5)
             .align_y(Alignment::Center);
         let user_info = button(user_info_with_avatar)
-            .on_press(Message::SetSettingsPopupOpen(true))
+            .on_press(Message::ToggleSettingsPopupOpen)
             .padding(5)
             .style(|theme: &Theme, status: button::Status| {
                 let palette = theme.extended_palette();
@@ -145,7 +143,8 @@ impl State {
             None => format!("Space {}", space.id()),
         };
         let open = self
-            .collapsible_spaces
+            .collapsibles
+            .spaces
             .get(&space.id())
             .unwrap_or(&false)
             .to_owned();
@@ -159,8 +158,8 @@ impl State {
 
         let collapsible = collapsible(toggler)
             .width(Length::Fill)
-            .on_close(Message::SetSpaceOpen(space.id(), false))
-            .on_open(Message::SetSpaceOpen(space.id(), true))
+            .on_close(Message::ToggleSpaceOpen(space.id()))
+            .on_open(Message::ToggleSpaceOpen(space.id()))
             .content(content)
             .open(open)
             .padding(SIDEBAR_ROOM_PADDING.left((DEPTH_PADDING * depth as f32) + HORIZONTAL_PADDING))
@@ -174,11 +173,7 @@ impl State {
             Some(name) => name,
             None => format!("Room {}", room.id()),
         };
-        let focused = match &self.focused_room {
-            Some(id) if *id == room.id() => true,
-            _ => false,
-        };
-
+        let focused = self.focused_rooms.contains_key(&room.id());
         let room_name = text(room_name);
         let room_image = self.sidebar_room_avatar(room, focused);
 
@@ -187,7 +182,7 @@ impl State {
             .spacing(5);
 
         button(content)
-            .on_press(Message::Timeline(TimelineMessage::LoadTimeline(room.id())))
+            .on_press(Message::OpenTimeline(room.id()))
             .padding(SIDEBAR_ROOM_PADDING.left((DEPTH_PADDING * depth as f32) + HORIZONTAL_PADDING))
             .width(Length::Fill)
             .style(move |theme: &Theme, status| sidebar_room_button_style(theme, status, focused))
@@ -195,7 +190,7 @@ impl State {
     }
 
     fn sidebar_room_avatar<'a>(&'a self, room: &'a Room, focused: bool) -> Element<'a> {
-        match self.room_avatar_cache.get(&room.id()) {
+        match self.image_cache.rooms.get(&room.id()) {
             Some(img) => match img {
                 Image::Ready(handle) => image(handle)
                     .width(SIDEBAR_ROOM_AVATAR_SIZE)
@@ -264,20 +259,9 @@ impl State {
         let mut root_parents = self
             .rooms
             .values()
-            .filter(|room| room.parents().is_empty() || room.is_direct())
+            .filter(|room| room.parents().is_empty() || room.is_direct() || room.is_group())
             .collect::<Vec<_>>();
-
-        root_parents.sort_by(|a, b| {
-            let name_a = a
-                .display_name()
-                .unwrap_or_else(|| a.id().to_string())
-                .to_lowercase();
-            let name_b = b
-                .display_name()
-                .unwrap_or_else(|| b.id().to_string())
-                .to_lowercase();
-            name_a.cmp(&name_b)
-        });
+        root_parents.sort();
 
         let direct_rooms = root_parents.iter().filter(|room| room.is_direct());
         let mut dms = column![];
@@ -285,21 +269,40 @@ impl State {
             dms = dms.push(self.room(dm, 1));
         }
         let dm_collapsible = collapsible(text("Direct Messages"))
-            .on_close(Message::SetDirectMessagesOpen(false))
-            .on_open(Message::SetDirectMessagesOpen(true))
-            .open(self.collapsible_dms_open)
+            .on_close(Message::ToggleDirectMessagesOpen)
+            .on_open(Message::ToggleDirectMessagesOpen)
+            .open(self.collapsibles.dms)
             .style(|theme: &Theme, status| sidebar_room_button_style(theme, status, false))
             .padding(SIDEBAR_ROOM_PADDING)
             .width(Length::Fill)
             .content(dms);
 
-        let space_rooms = root_parents.iter().filter(|room| !room.is_direct());
+        let group_rooms = root_parents.iter().filter(|room| room.is_group());
+        let mut groups = column![];
+        for group in group_rooms {
+            groups = groups.push(self.room(group, 1));
+        }
+        let group_collapsible = collapsible(text("Groups"))
+            .on_close(Message::ToggleGroupMessagesOpen)
+            .on_open(Message::ToggleGroupMessagesOpen)
+            .open(self.collapsibles.groups)
+            .style(|theme: &Theme, status| sidebar_room_button_style(theme, status, false))
+            .padding(SIDEBAR_ROOM_PADDING)
+            .width(Length::Fill)
+            .content(groups);
+
+        let space_rooms = root_parents.iter().filter(|room| room.is_space());
         let mut spaces = column![];
         for space in space_rooms {
             spaces = spaces.push(self.space(space, 0))
         }
 
-        column([dm_collapsible.into(), spaces.into()]).into()
+        column([
+            dm_collapsible.into(),
+            group_collapsible.into(),
+            spaces.into(),
+        ])
+        .into()
     }
 }
 

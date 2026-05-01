@@ -119,6 +119,11 @@ impl Room {
         self.is_space
     }
 
+    /// Returns if the room is a group. A group is a room that has no parents.
+    pub fn is_group(&self) -> bool {
+        !self.is_space() && !self.is_direct() && self.parents().is_empty()
+    }
+
     /// Returns the display name of the room, if it exists.
     pub fn display_name(&self) -> Option<String> {
         self.display_name.clone()
@@ -152,3 +157,18 @@ impl PartialEq for Room {
 }
 
 impl Eq for Room {}
+
+impl PartialOrd for Room {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        let our_name = self.display_name()?.to_lowercase();
+        let their_name = other.display_name()?.to_lowercase();
+        our_name.partial_cmp(&their_name)
+    }
+}
+
+impl Ord for Room {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(&other)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    }
+}

@@ -1,94 +1,110 @@
 use chrono::DateTime;
 use components::separator;
 use iced::{
-    Element, Length,
-    widget::{center, column, scrollable, sensor, space, text, text_input},
+    Alignment, Element, Length,
+    widget::{center, column, container, row, scrollable, sensor, space, text, text_input},
 };
-use lucide_icons::Icon;
-use matrix::services::timeline::{
-    EventTimelineItem, MessageType, MsgLikeKind, TimelineItemContent, TimelineItemKind,
-    VirtualTimelineItem,
+use matrix::services::{
+    room::RoomId,
+    timeline::{
+        EventTimelineItem, MessageType, MsgLikeKind, TimelineItemContent, TimelineItemKind,
+        VirtualTimelineItem,
+    },
+    user::UserId,
 };
 
-use crate::screen::home::TimelineMessage;
+use crate::screen::home::FocusedRoom;
 
 use super::{Message, State};
 
+const PROFILE_PICTURE_SIZE: u32 = 32;
+
 impl State {
     pub(super) fn main_view(&self) -> Element<'_, Message> {
-        let Some(room_id) = &self.focused_room else {
-            return center(text("Welcome to the chat screen")).into();
-        };
+        // TODO: render all chats present in `focused_rooms`.
+        if let Some(room_id) = self.focused_rooms.keys().next() {
+            self.chat(room_id)
+        } else {
+            center(text("Welcome to the chat screen")).into()
+        }
+    }
 
-        let Some(timeline) = self.timelines.get(room_id) else {
+    fn chat<'a>(&'a self, room_id: &'a RoomId) -> Element<'a, Message> {
+        let Some(room) = self.focused_rooms.get(room_id) else {
             return center(text("Loading...")).into();
         };
 
-        let mut chat_item = column![
-            text!("Timeline for {}", room_id),
-            space::vertical().height(40)
-        ]
-        .spacing(10);
+        let mut messages = column![].spacing(2.5);
 
-        if timeline.hit_start {
-            chat_item = chat_item.push(text("Hit start of timeline"));
-        } else {
-            chat_item = chat_item.push(
-                sensor(text("[backwards] Loading more messages...")).on_show(|_| {
-                    Message::Timeline(TimelineMessage::PaginateBackwards(room_id.clone()))
-                }),
+        if !room.timeline.hit_start {
+            messages = messages.push(
+                sensor(
+                    center(
+                        text("Loading more messages...")
+                            .size(12)
+                            .style(text::secondary),
+                    )
+                    .padding(10),
+                )
+                .anticipate(50)
+                .on_show(|_| Message::PaginateBackwards(room_id.clone())),
             )
         }
 
-        for item in &timeline.items {
-            let element: Element<'_, Message> = match item.kind() {
-                TimelineItemKind::Virtual(item) => self.virtual_timeline_item(item),
-                TimelineItemKind::Event(item) => self.timeline_item(item),
+        let mut previous_sender: Option<UserId> = None;
+        for item in &room.timeline.items {
+            let mut is_same_sender = false;
+
+            let mut message = match item.kind() {
+                TimelineItemKind::Virtual(item) => {
+                    previous_sender = None;
+                    self.virtual_timeline_item(room, item)
+                }
+                TimelineItemKind::Event(item) => {
+                    is_same_sender = previous_sender.map_or(false, |id| id == item.sender());
+                    previous_sender = Some(item.sender().to_owned());
+
+                    let message_content = self.timeline_item(item);
+                    let (profile_picture, message_content) = if is_same_sender {
+                        let space = space::horizontal().width(PROFILE_PICTURE_SIZE).into();
+                        (space, message_content)
+                    } else {
+                        let message_content = column![text("User"), message_content].spacing(2.5);
+                        (pfp(), message_content.into())
+                    };
+
+                    row![profile_picture, message_content].spacing(10).into()
+                }
             };
 
-            chat_item = chat_item.push(element);
+            if !is_same_sender {
+                message = container(message)
+                    .padding(iced::Padding::ZERO.top(10))
+                    .into()
+            }
+
+            messages = messages.push(message);
         }
 
-        if timeline.hit_end {
-            chat_item = chat_item.push(text("Hit end of timeline"));
-        } else {
-            chat_item = chat_item.push(
-                sensor(text("[forwards] Loading more messages...")).on_show(|_| {
-                    Message::Timeline(TimelineMessage::PaginateForwards(room_id.clone()))
-                }),
+        if !room.timeline.hit_end {
+            messages = messages.push(
+                sensor(space())
+                    .anticipate(50)
+                    .on_show(|_| Message::PaginateForwards(room_id.clone())),
             )
         }
 
-        let message_input = {
-            let current_message_input = match self.message_inputs.get(room_id) {
-                Some(old_message) => old_message.as_str(),
-                None => "",
-            };
-
-            text_input("Message...", current_message_input)
-                .on_input(|text| Message::MessageInputChanged(room_id.clone(), text))
-                .on_submit(Message::SendMessage(room_id.clone()))
-        };
-        let conversation = scrollable(chat_item.width(Length::Fill))
+        let messages = container(messages).padding(iced::Padding::ZERO.bottom(10));
+        let messages = scrollable(messages.width(Length::Fill))
             .height(Length::Fill)
+            .spacing(5)
             .anchor_bottom();
 
-        column![conversation, message_input].into()
-    }
+        let message_input = text_input("Message...", &room.message_draft)
+            .on_input(|text| Message::MessageInputChanged(room_id.clone(), text))
+            .on_submit(Message::SendMessage(room_id.clone()));
 
-    fn virtual_timeline_item(&self, item: &VirtualTimelineItem) -> Element<'_, Message> {
-        match item {
-            VirtualTimelineItem::DateDivider(date) => {
-                if let Some(date) = DateTime::from_timestamp_millis(date.get().into()) {
-                    let date = date.format("%Y-%m-%d").to_string();
-                    text(date).style(text::secondary).into()
-                } else {
-                    separator::horizontal().into()
-                }
-            }
-            VirtualTimelineItem::ReadMarker => Icon::CheckCheck.widget().into(),
-            VirtualTimelineItem::TimelineStart => text("Start of the timeline").into(),
-        }
+        column![messages, message_input].padding(10).into()
     }
 
     fn timeline_item(&self, item: &EventTimelineItem) -> Element<'_, Message> {
@@ -107,7 +123,7 @@ impl State {
                         text!("Server notice: {}", &content.body).into()
                     }
                     MessageType::Text(content) => {
-                        let mut element = text!("Text: {}", &content.body);
+                        let mut element = text!("{}", &content.body);
                         if item.is_local_echo() {
                             element = element.style(text::secondary);
                         }
@@ -117,7 +133,7 @@ impl State {
                     MessageType::VerificationRequest(content) => {
                         text!("Verification request: {}", content.to.to_string()).into()
                     }
-                    _ => todo!(),
+                    _ => unreachable!(),
                 },
                 MsgLikeKind::Sticker(sticker) => {
                     text!("Sticker: {}", sticker.content().body).into()
@@ -145,4 +161,61 @@ impl State {
             _ => space().into(),
         }
     }
+
+    fn virtual_timeline_item<'a>(
+        &'a self,
+        room: &'a FocusedRoom,
+        item: &'a VirtualTimelineItem,
+    ) -> Element<'a, Message> {
+        let mut style: fn(&iced::Theme) -> container::Style = container::secondary;
+
+        let content: Element<'a, Message> = match item {
+            VirtualTimelineItem::DateDivider(milliseconds) => {
+                let milliseconds = milliseconds.get().into();
+                let Some(date) = DateTime::from_timestamp_millis(milliseconds) else {
+                    return separator::horizontal().style(style).into();
+                };
+                let date = date.format("%d/%m/%Y").to_string();
+                text(date).size(12).style(text::secondary).into()
+            }
+            VirtualTimelineItem::ReadMarker => {
+                style = container::danger;
+                text("New messages").size(12).style(text::danger).into()
+            }
+            VirtualTimelineItem::TimelineStart => {
+                let element = text("You've hit the start of the conversation!")
+                    .size(12)
+                    .style(text::secondary);
+
+                if room.timeline.hit_start {
+                    element.into()
+                } else {
+                    sensor(element)
+                        .on_show(|_| Message::TimelineStart(room.id.clone()))
+                        .into()
+                }
+            }
+        };
+
+        row::Row::new()
+            .push(separator::horizontal().style(style))
+            .push(content)
+            .push(separator::horizontal().style(style))
+            .spacing(5)
+            .align_y(Alignment::Center)
+            .into()
+    }
+}
+
+fn pfp<'a>() -> Element<'a, Message> {
+    container(space())
+        .width(PROFILE_PICTURE_SIZE)
+        .height(PROFILE_PICTURE_SIZE)
+        .style(|theme: &iced::Theme| {
+            let palette = theme.extended_palette();
+            let mut style = container::Style::default();
+            style.border = style.border.rounded(100);
+            style.background(palette.primary.base.color)
+        })
+        .into()
 }
