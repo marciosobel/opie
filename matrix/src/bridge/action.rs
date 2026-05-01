@@ -1,12 +1,12 @@
 use crate::services::sas_verification::Action as SasAction;
 
 mod auth;
+mod media;
 mod timeline;
-mod user;
 
 pub use auth::AuthAction;
+pub use media::MediaAction;
 pub use timeline::TimelineAction;
-pub use user::UserAction;
 
 /// Actions (or commands) that can be sent to the Matrix bridge.
 #[derive(Debug, Clone)]
@@ -20,8 +20,8 @@ pub enum Action {
     Auth(AuthAction),
     /// An action related to timelines.
     Timeline(TimelineAction),
-    /// An action related to users.
-    User(UserAction),
+    /// An action related to media.
+    Media(MediaAction),
     /// Gets the list to all rooms
     ListAllRooms,
     /// Get the devices this account is linked to
@@ -41,7 +41,7 @@ impl std::fmt::Display for Action {
             Action::ListAllRooms => write!(f, "ListAllRooms"),
             Action::GetDevices => write!(f, "GetDevices"),
             Action::SasVerification(action) => write!(f, "SasVerification::{}", action),
-            Action::User(action) => write!(f, "User::{}", action),
+            Action::Media(action) => write!(f, "Media::{}", action),
         }
     }
 }
@@ -59,4 +59,4 @@ macro_rules! from {
 from!(SasAction => SasVerification);
 from!(AuthAction => Auth);
 from!(TimelineAction => Timeline);
-from!(UserAction => User);
+from!(MediaAction => Media);

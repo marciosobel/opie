@@ -5,7 +5,7 @@ use crate::{
     Action, Channel, Error, Event,
     bridge::{
         self, Client,
-        action::{TimelineAction, UserAction},
+        action::{MediaAction, TimelineAction},
     },
     services::{TimelineEvent, sas_verification},
 };
@@ -77,17 +77,17 @@ impl AuthenticatedState {
                 }
                 None
             }
-            Action::User(action) => self.handle_user_action(action, channel).await,
+            Action::Media(action) => self.handle_media_action(action, channel).await,
         }
     }
 
-    async fn handle_user_action(
+    async fn handle_media_action(
         &mut self,
-        action: bridge::action::UserAction,
+        action: bridge::action::MediaAction,
         channel: &mut Channel<Action, Event>,
     ) -> Option<State> {
         match action {
-            UserAction::FetchUserAvatar(user_id, uri) => match self.fetch_user_avatar(uri).await {
+            MediaAction::FetchUserAvatar(user_id, uri) => match self.fetch_user_avatar(uri).await {
                 Ok(data) => {
                     let mut tx = channel.sender();
                     tokio::spawn(async move {

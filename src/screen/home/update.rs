@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use iced::{Task, widget::image};
-use matrix::bridge::action::UserAction;
 
 use super::{Image, Instruction, Message, State};
 
@@ -11,7 +10,7 @@ use crate::screen::home::{Timeline, view::settings_popup};
 use matrix::{
     bridge::{
         Event as MatrixEvent,
-        action::{Action as MatrixAction, TimelineAction},
+        action::{Action as MatrixAction, MediaAction, TimelineAction},
     },
     services::{Room, TimelineEvent, sas_verification},
 };
@@ -119,7 +118,7 @@ impl State {
             Message::LoadUserAvatar(id, uri) => {
                 if !self.image_cache.users.contains_key(&id) {
                     self.bridge
-                        .send(UserAction::FetchUserAvatar(id.clone(), uri));
+                        .send(MediaAction::FetchUserAvatar(id.clone(), uri));
                     self.image_cache.users.insert(id, Image::Fetching);
                 }
             }
