@@ -4,10 +4,12 @@ use anyhow::Result;
 use matrix_sdk::{
     Client as ClientInner,
     config::SyncSettings,
-    media::MediaFormat,
-    ruma::{OwnedRoomId, api::client::filter::FilterDefinition},
+    media::{MediaFormat, MediaRequestParameters},
+    ruma::{OwnedRoomId, api::client::filter::FilterDefinition, events::room::MediaSource},
 };
 use tokio::sync::mpsc;
+
+pub use matrix_sdk::ruma::OwnedMxcUri;
 
 use crate::{
     Channel,
@@ -275,6 +277,7 @@ impl Client {
         Ok(devices)
     }
 
+    /// Sends a message to the provided [`RoomId`](OwnedRoomId), if a timeline for it exists.
     pub(crate) async fn send_message(
         &mut self,
         room_id: OwnedRoomId,
@@ -286,6 +289,19 @@ impl Client {
 
         timeline
             .send_message(content)
+            .await
+            .map_err(|e| Error::from(Arc::new(e)))
+    }
+
+    pub(crate) async fn fetch_user_avatar(&self, uri: OwnedMxcUri) -> Result<Vec<u8>, Error> {
+        let parameters = MediaRequestParameters {
+            source: MediaSource::Plain(uri),
+            format: MediaFormat::File,
+        };
+
+        self.inner()
+            .media()
+            .get_media_content(&parameters, true)
             .await
             .map_err(|e| Error::from(Arc::new(e)))
     }

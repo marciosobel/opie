@@ -46,7 +46,7 @@ impl Display for UserInfo {
 
         write!(
             f,
-            "UserInfo {{ id: {}, isplay_name: {}, .. }}",
+            "UserInfo {{ id: {}, display_name: {}, .. }}",
             self.id, display_name
         )
     }

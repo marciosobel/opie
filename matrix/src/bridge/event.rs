@@ -6,7 +6,7 @@ use crate::{
     services::{Device, Room, TimelineEvent, UserInfo, sas_verification},
 };
 
-use matrix_sdk::ruma::OwnedRoomId;
+use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId};
 
 /// Events emitted by the Matrix bridge.
 #[derive(Debug, Clone)]
@@ -32,6 +32,7 @@ pub enum Event {
     SasVerificationEvent(sas_verification::Event),
     /// The devices this account is linked to
     DeviceList(Vec<Device>),
+    UserAvatarFetched(OwnedUserId, bytes::Bytes),
 }
 
 impl From<Error> for Event {
@@ -74,6 +75,14 @@ impl std::fmt::Display for Event {
             Event::TimelineEvent(event) => write!(f, "TimelineEvent({})", event),
             Event::DeviceList(devices) => write!(f, "DeviceList({} devices)", devices.len()),
             Event::SasVerificationEvent(event) => write!(f, "SasVerificationEvent({})", event),
+            Event::UserAvatarFetched(user_id, bytes) => {
+                write!(
+                    f,
+                    "UserAvatarFetched {{ user_id: {}, bytes: {} bytes }}",
+                    user_id,
+                    bytes.len()
+                )
+            }
         }
     }
 }

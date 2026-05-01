@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use iced::widget::image;
 
 use matrix::{
-    bridge::{Action as MatrixAction, Bridge, Event as MatrixEvent},
+    bridge::{Action as MatrixAction, Bridge, Event as MatrixEvent, OwnedMxcUri},
     services::{
         room::{Room, RoomId},
         timeline,
@@ -44,6 +44,7 @@ struct Collapsibles {
 #[derive(Debug, Clone, Default)]
 struct ImageCache {
     rooms: HashMap<RoomId, Image>,
+    users: HashMap<UserId, Image>,
 }
 
 #[derive(Debug, Clone)]
@@ -76,6 +77,8 @@ pub enum Message {
     MessageInputChanged(RoomId, String),
     SendMessage(RoomId),
 
+    LoadUserAvatar(UserId, OwnedMxcUri),
+
     SettingsPopup(view::settings_popup::Message),
 }
 
@@ -99,6 +102,7 @@ impl std::ops::Deref for User {
 #[derive(Debug, Clone)]
 pub enum Image {
     Ready(image::Handle),
+    Fetching,
     None,
 }
 

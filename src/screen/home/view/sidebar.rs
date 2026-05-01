@@ -50,7 +50,7 @@ impl State {
                 .height(SIDEBAR_USER_AVATAR_SIZE)
                 .border_radius(100)
                 .into(),
-            Image::None => {
+            _ => {
                 let placeholder: Element<'_> = match user.display_name() {
                     Some(name) if name.len() > 0 => {
                         let first_letter = name.chars().next().unwrap();
@@ -194,7 +194,7 @@ impl State {
                     .border_radius(100)
                     .content_fit(ContentFit::Cover)
                     .into(),
-                Image::None => {
+                _ => {
                     let placeholder: Element<'_> = match room.display_name() {
                         Some(name) if name.len() > 0 => {
                             let first_letter = name.chars().next().unwrap();

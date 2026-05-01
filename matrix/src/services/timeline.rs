@@ -17,8 +17,8 @@ pub use matrix_sdk::ruma::events::room::message::MessageType;
 pub use matrix_sdk_ui::{
     eyeball_im::{Vector, VectorDiff},
     timeline::{
-        EventTimelineItem, Message, MsgLikeKind, TimelineItem, TimelineItemContent,
-        TimelineItemKind, VirtualTimelineItem,
+        EventTimelineItem, Message, MsgLikeKind, Profile, TimelineDetails, TimelineItem,
+        TimelineItemContent, TimelineItemKind, VirtualTimelineItem,
     },
 };
 

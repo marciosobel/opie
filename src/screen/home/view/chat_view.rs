@@ -2,18 +2,18 @@ use chrono::DateTime;
 use components::separator;
 use iced::{
     Alignment, Element, Length, Padding,
-    widget::{center, column, container, row, scrollable, sensor, space, text, text_input},
+    widget::{center, column, container, image, row, scrollable, sensor, space, text, text_input},
 };
 use matrix::services::{
     room::RoomId,
     timeline::{
-        EventTimelineItem, MessageType, MsgLikeKind, TimelineItemContent, TimelineItemKind,
-        VirtualTimelineItem,
+        EventTimelineItem, MessageType, MsgLikeKind, TimelineDetails, TimelineItemContent,
+        TimelineItemKind, VirtualTimelineItem,
     },
     user::UserId,
 };
 
-use crate::screen::home::FocusedRoom;
+use crate::screen::home::{FocusedRoom, Image};
 
 use super::{Message, State};
 
@@ -65,12 +65,16 @@ impl State {
                     previous_sender = Some(item.sender().to_owned());
 
                     let message_content = self.timeline_item(item);
-                    let (profile_picture, message_content) = if is_same_sender {
+                    let (profile_picture, message_content): (
+                        Element<'_, Message>,
+                        Element<'_, Message>,
+                    ) = if is_same_sender {
                         let space = space::horizontal().width(PROFILE_PICTURE_SIZE).into();
                         (space, message_content)
                     } else {
-                        let message_content = column![text("User"), message_content].spacing(2.5);
-                        (pfp(), message_content.into())
+                        let (username, pfp) = self.get_user_username_and_profile_picture(item);
+                        let message_content = column![text(username), message_content].spacing(2.5);
+                        (pfp, message_content.into())
                     };
 
                     row![profile_picture, message_content].spacing(10).into()
@@ -214,17 +218,51 @@ impl State {
             .align_y(Alignment::Center)
             .into()
     }
-}
 
-fn pfp<'a>() -> Element<'a, Message> {
-    container(space())
-        .width(PROFILE_PICTURE_SIZE)
-        .height(PROFILE_PICTURE_SIZE)
-        .style(|theme: &iced::Theme| {
-            let palette = theme.extended_palette();
-            let mut style = container::Style::default();
-            style.border = style.border.rounded(100);
-            style.background(palette.primary.base.color)
-        })
-        .into()
+    fn get_user_username_and_profile_picture<'a>(
+        &'a self,
+        item: &'a EventTimelineItem,
+    ) -> (String, Element<'a, Message>) {
+        let id = item.sender();
+
+        let (username, uri) = match item.sender_profile() {
+            TimelineDetails::Ready(profile) => {
+                let display_name = match profile.display_name {
+                    Some(ref name) if name.len() > 0 => name.to_owned(),
+                    _ => id.to_string(),
+                };
+                let uri = profile.avatar_url.as_ref();
+                (display_name, uri)
+            }
+            _ => (id.to_string(), None),
+        };
+
+        let mock_pfp = container(text(username.chars().next().unwrap()))
+            .center(PROFILE_PICTURE_SIZE)
+            .style(|theme: &iced::Theme| {
+                let palette = theme.extended_palette();
+                let mut style = container::Style::default();
+                style.border = style.border.rounded(100);
+                style.background(palette.primary.base.color)
+            });
+
+        let pfp = if let Some(img) = self.image_cache.users.get(id) {
+            match img {
+                Image::Ready(handle) => image(handle)
+                    .width(PROFILE_PICTURE_SIZE)
+                    .height(PROFILE_PICTURE_SIZE)
+                    .border_radius(100)
+                    .into(),
+                _ => mock_pfp.into(),
+            }
+        } else if let Some(uri) = uri {
+            sensor(mock_pfp)
+                .on_show(|_| Message::LoadUserAvatar(id.to_owned(), uri.to_owned()))
+                .into()
+        } else {
+            mock_pfp.into()
+        };
+
+        (username, pfp)
+    }
 }

@@ -1,7 +1,12 @@
+use bytes::Bytes;
+
 use super::State;
 use crate::{
     Action, Channel, Error, Event,
-    bridge::{self, Client, action::TimelineAction},
+    bridge::{
+        self, Client,
+        action::{TimelineAction, UserAction},
+    },
     services::{TimelineEvent, sas_verification},
 };
 
@@ -72,7 +77,28 @@ impl AuthenticatedState {
                 }
                 None
             }
+            Action::User(action) => self.handle_user_action(action, channel).await,
         }
+    }
+
+    async fn handle_user_action(
+        &mut self,
+        action: bridge::action::UserAction,
+        channel: &mut Channel<Action, Event>,
+    ) -> Option<State> {
+        match action {
+            UserAction::FetchUserAvatar(user_id, uri) => match self.fetch_user_avatar(uri).await {
+                Ok(data) => {
+                    let mut tx = channel.sender();
+                    tokio::spawn(async move {
+                        let bytes = Bytes::copy_from_slice(&data);
+                        tx.send(Event::UserAvatarFetched(user_id, bytes)).await
+                    });
+                }
+                Err(error) => channel.send(error).await,
+            },
+        }
+        None
     }
 
     async fn handle_timeline_action(

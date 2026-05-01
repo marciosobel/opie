@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use iced::{Task, widget::image};
+use matrix::bridge::action::UserAction;
 
 use super::{Image, Instruction, Message, State};
 
@@ -115,6 +116,13 @@ impl State {
                         .send(TimelineAction::SendMessage(id, message.to_string()));
                 }
             }
+            Message::LoadUserAvatar(id, uri) => {
+                if !self.image_cache.users.contains_key(&id) {
+                    self.bridge
+                        .send(UserAction::FetchUserAvatar(id.clone(), uri));
+                    self.image_cache.users.insert(id, Image::Fetching);
+                }
+            }
             Message::SettingsPopup(message) => {
                 let action = self.settings.update(message).map(Message::SettingsPopup);
 
@@ -182,6 +190,11 @@ impl State {
             MatrixEvent::DeviceList(devices) => {
                 use settings_popup::Message;
                 self.settings.update(Message::DeviceList(devices));
+            }
+            MatrixEvent::UserAvatarFetched(user_id, bytes) => {
+                self.image_cache
+                    .users
+                    .insert(user_id, Image::Ready(image::Handle::from_bytes(bytes)));
             }
             _ => {}
         }

@@ -125,6 +125,7 @@ impl App {
             Event::RoomList(_) => {}
             Event::TimelineEvent(_) => {}
             Event::DeviceList(_) => {}
+            Event::UserAvatarFetched(_, _) => {}
             Event::SasVerificationEvent(event) => match event {
                 sas_verification::Event::Error(error) => tracing::error!("{}", error),
                 e => self.verification_state = e.into(),
