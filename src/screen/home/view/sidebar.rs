@@ -21,7 +21,7 @@ const SIDEBAR_USER_AVATAR_SIZE: u32 = 40;
 
 impl State {
     pub(super) fn sidebar(&self) -> Element<'_> {
-        let rooms: Element<'_> = if self.is_fetching_rooms {
+        let rooms: Element<'_> = if self.is_fetching.rooms {
             center(text("Loading rooms...")).into()
         } else {
             self.spaces()

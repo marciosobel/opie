@@ -78,6 +78,17 @@ impl AuthenticatedState {
                 None
             }
             Action::Media(action) => self.handle_media_action(action, channel).await,
+            Action::GetUser(id) => {
+                let mut tx = channel.sender();
+                let client = self.client.clone();
+                tokio::spawn(async move {
+                    match client.get_profile_of(id).await {
+                        Ok(info) => tx.send(Event::GetUserResponse(info)).await,
+                        Err(error) => tx.send(error).await,
+                    }
+                });
+                None
+            }
         }
     }
 
@@ -87,16 +98,18 @@ impl AuthenticatedState {
         channel: &mut Channel<Action, Event>,
     ) -> Option<State> {
         match action {
-            MediaAction::FetchUserAvatar(user_id, uri) => match self.fetch_user_avatar(uri).await {
-                Ok(data) => {
-                    let mut tx = channel.sender();
-                    tokio::spawn(async move {
-                        let bytes = Bytes::copy_from_slice(&data);
-                        tx.send(Event::UserAvatarFetched(user_id, bytes)).await
-                    });
+            MediaAction::FetchTimelineImage(event_id, media_source) => {
+                match self.fetch_media(media_source).await {
+                    Ok(data) => {
+                        let mut tx = channel.sender();
+                        tokio::spawn(async move {
+                            let bytes = Bytes::copy_from_slice(&data);
+                            tx.send(Event::TimelineImageFetched(event_id, bytes)).await
+                        });
+                    }
+                    Err(error) => channel.send(error).await,
                 }
-                Err(error) => channel.send(error).await,
-            },
+            }
         }
         None
     }

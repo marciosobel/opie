@@ -7,13 +7,13 @@ use iced::{
 use matrix::services::{
     room::RoomId,
     timeline::{
-        EventTimelineItem, MessageType, MsgLikeKind, TimelineDetails, TimelineItemContent,
-        TimelineItemKind, VirtualTimelineItem,
+        EventTimelineItem, MessageType, MsgLikeContent, MsgLikeKind, TimelineDetails,
+        TimelineItemContent, TimelineItemKind, VirtualTimelineItem,
     },
     user::UserId,
 };
 
-use crate::screen::home::{FocusedRoom, Image};
+use crate::screen::home::{FocusedRoom, Image, User};
 
 use super::{Message, State};
 
@@ -64,25 +64,47 @@ impl State {
                     is_same_sender = previous_sender.map_or(false, |id| id == item.sender());
                     previous_sender = Some(item.sender().to_owned());
 
-                    let message_content = self.timeline_item(item);
-                    let (profile_picture, message_content): (
-                        Element<'_, Message>,
-                        Element<'_, Message>,
-                    ) = if is_same_sender {
-                        let space = space::horizontal().width(PROFILE_PICTURE_SIZE).into();
-                        (space, message_content)
-                    } else {
-                        let (username, pfp) = self.get_user_username_and_profile_picture(item);
-                        let username = text(username).font(iced::Font {
-                            weight: iced::font::Weight::Semibold,
-                            ..iced::Font::DEFAULT
-                        });
+                    match item.content() {
+                        TimelineItemContent::MsgLike(content) => {
+                            let message_content = match self.timeline_message(content, item) {
+                                Some(element) => element,
+                                None => continue,
+                            };
 
-                        let message_content = column![username, message_content].spacing(2.5);
-                        (pfp, message_content.into())
-                    };
+                            let (profile_picture, message_content): (
+                                Element<'_, Message>,
+                                Element<'_, Message>,
+                            ) = if is_same_sender {
+                                let space = space::horizontal().width(PROFILE_PICTURE_SIZE).into();
+                                (space, message_content)
+                            } else {
+                                let (username, pfp) =
+                                    if let Some(profile) = self.users.get(item.sender()) {
+                                        self.user_profile(profile)
+                                    } else {
+                                        self.get_user_profile(item)
+                                    };
 
-                    row![profile_picture, message_content].spacing(10).into()
+                                let username = text(username).font(iced::Font {
+                                    weight: iced::font::Weight::Semibold,
+                                    ..iced::Font::DEFAULT
+                                });
+
+                                let message_content =
+                                    column![username, message_content].spacing(2.5);
+                                (pfp, message_content.into())
+                            };
+
+                            row![profile_picture, message_content].spacing(10).into()
+                        }
+                        _ => {
+                            previous_sender = None; // Not a user message
+                            match self.timeline_event(item) {
+                                Some(element) => element,
+                                None => continue,
+                            }
+                        }
+                    }
                 }
             };
 
@@ -116,55 +138,35 @@ impl State {
         column![messages, message_input].padding(10).into()
     }
 
-    fn timeline_item(&self, item: &EventTimelineItem) -> Element<'_, Message> {
-        match item.content() {
-            TimelineItemContent::MsgLike(content) => match &content.kind {
-                MsgLikeKind::Message(message) => match message.msgtype() {
-                    MessageType::Audio(content) => text!("Audio: {}", content.filename()).into(),
-                    MessageType::Emote(content) => text!("Emote: {}", &content.body).into(),
-                    MessageType::File(content) => text!("File: {}", content.filename()).into(),
-                    MessageType::Image(content) => text!("Image: {}", content.filename()).into(),
-                    MessageType::Location(content) => {
-                        text!("Location: {}", content.plain_text_representation()).into()
-                    }
-                    MessageType::Notice(content) => text!("Notce: {}", &content.body).into(),
-                    MessageType::ServerNotice(content) => {
-                        text!("Server notice: {}", &content.body).into()
-                    }
-                    MessageType::Text(content) => {
-                        let mut element = text!("{}", &content.body);
-                        if item.is_local_echo() {
-                            element = element.style(text::secondary);
-                        }
-                        element.into()
-                    }
-                    MessageType::Video(content) => text!("Video: {}", content.filename()).into(),
-                    MessageType::VerificationRequest(content) => {
-                        text!("Verification request: {}", content.to.to_string()).into()
-                    }
-                    _ => unreachable!(),
-                },
-                MsgLikeKind::Sticker(sticker) => {
-                    text!("Sticker: {}", sticker.content().body).into()
-                }
-                MsgLikeKind::Poll(poll_state) => {
-                    text!("Poll: {}", poll_state.results().question).into()
-                }
-                MsgLikeKind::Redacted => {
-                    // Redacted messages are often deleted ones or some kind of information
-                    // that shouldn't be seen. In the future we could add a setting to whether
-                    // or not to see when a redacted message appears, but, for now, we just
-                    // omit it.
-                    space().into()
-                }
-                MsgLikeKind::UnableToDecrypt(_) => text!("Encrypted message").into(),
-                MsgLikeKind::Other(message) => text!("Unknown message type: {:#?}", message).into(),
-            },
+    fn timeline_event<'a>(&'a self, item: &'a EventTimelineItem) -> Option<Element<'a, Message>> {
+        let content = match item.content() {
             TimelineItemContent::MembershipChange(member) => {
-                text!("Membership change: {}", member.user_id().to_string()).into()
+                text!("{}", member.user_id().to_string()).into()
             }
             TimelineItemContent::ProfileChange(member) => {
-                text!("Profile Change: {}", member.user_id()).into()
+                let value = if let Some(_) = member.avatar_url_change() {
+                    let name = if let Some(profile) = self.users.get(member.user_id()) {
+                        profile.display_name_or_id()
+                    } else {
+                        member.user_id().to_string()
+                    };
+
+                    format!("{} changed avatar", name)
+                } else if let Some(_) = member.displayname_change() {
+                    let name = if let Some(profile) = self.users.get(member.user_id()) {
+                        profile.display_name_or_id()
+                    } else {
+                        member.user_id().to_string()
+                    };
+
+                    format!("{} changed their display name", name)
+                } else {
+                    return None;
+                };
+
+                container(text!("{}", value).size(12).style(text::secondary))
+                    .center_x(Length::Fill)
+                    .into()
             }
             TimelineItemContent::FailedToParseMessageLike { error, .. } => {
                 text!("Failed to parse messagelike: {:#?}", error).into()
@@ -173,8 +175,99 @@ impl State {
                 text!("Failed to parse state: {:#?}", error).into()
             }
             TimelineItemContent::CallInvite => text("Call invite").style(text::secondary).into(),
-            _ => space().into(),
-        }
+            _ => return None,
+        };
+
+        Some(content)
+    }
+
+    fn timeline_message<'a>(
+        &'a self,
+        content: &'a MsgLikeContent,
+        item: &'a EventTimelineItem,
+    ) -> Option<Element<'a, Message>> {
+        let content = match &content.kind {
+            MsgLikeKind::Message(message) => match message.msgtype() {
+                MessageType::Audio(content) => text!("Audio: {}", content.filename()).into(),
+                MessageType::Emote(content) => text!("Emote: {}", &content.body).into(),
+                MessageType::File(content) => text!("File: {}", content.filename()).into(),
+                MessageType::Image(content) => {
+                    let Some(id) = item.event_id() else {
+                        let content = text("Failed to retrieve event id for this item")
+                            .style(text::danger)
+                            .into();
+                        return Some(content);
+                    };
+                    if let Some(img) = self.image_cache.timeline.get(id) {
+                        match img {
+                            Image::Ready(handle) => container(image(handle)).max_height(350).into(),
+                            Image::Fetching => {
+                                let icon =
+                                    lucide_icons::Icon::Image.widget().style(text::secondary);
+                                let text = text("Loading image...");
+                                row![icon, text]
+                                    .spacing(10)
+                                    .align_y(Alignment::Center)
+                                    .into()
+                            }
+                            Image::None => {
+                                let icon =
+                                    lucide_icons::Icon::ImageOff.widget().style(text::secondary);
+                                let text = text("Failed to load image");
+                                row![icon, text]
+                                    .spacing(10)
+                                    .align_y(Alignment::Center)
+                                    .into()
+                            }
+                        }
+                    } else {
+                        let icon = lucide_icons::Icon::Image.widget().style(text::secondary);
+                        let text = text("Loading image...").style(text::secondary);
+                        let element = row![icon, text].spacing(10).align_y(Alignment::Center);
+
+                        sensor(element)
+                            .on_show(|_| {
+                                Message::FetchTimelineImage(id.to_owned(), content.source.clone())
+                            })
+                            .into()
+                    }
+                }
+                MessageType::Location(content) => {
+                    text!("Location: {}", content.plain_text_representation()).into()
+                }
+                MessageType::Notice(content) => text!("Notce: {}", &content.body).into(),
+                MessageType::ServerNotice(content) => {
+                    text!("Server notice: {}", &content.body).into()
+                }
+                MessageType::Text(content) => {
+                    let mut element = text!("{}", &content.body);
+                    if item.is_local_echo() {
+                        element = element.style(text::secondary);
+                    }
+                    element.into()
+                }
+                MessageType::Video(content) => text!("Video: {}", content.filename()).into(),
+                MessageType::VerificationRequest(content) => {
+                    text!("Verification request: {}", content.to.to_string()).into()
+                }
+                _ => unreachable!(),
+            },
+            MsgLikeKind::Sticker(sticker) => text!("Sticker: {}", sticker.content().body).into(),
+            MsgLikeKind::Poll(poll_state) => {
+                text!("Poll: {}", poll_state.results().question).into()
+            }
+            MsgLikeKind::Redacted => {
+                // Redacted messages are often deleted ones or some kind of information
+                // that shouldn't be seen. In the future we could add a setting to whether
+                // or not to see when a redacted message appears, but, for now, we just
+                // omit it.
+                return None;
+            }
+            MsgLikeKind::UnableToDecrypt(_) => text!("Encrypted message").into(),
+            MsgLikeKind::Other(message) => text!("Unknown message type: {:#?}", message).into(),
+        };
+
+        Some(content)
     }
 
     fn virtual_timeline_item<'a>(
@@ -200,6 +293,8 @@ impl State {
             VirtualTimelineItem::TimelineStart => {
                 let hit_start_message = text("You've hit the start of the conversation!")
                     .size(12)
+                    .align_x(Alignment::Center)
+                    .wrapping(text::Wrapping::None)
                     .style(text::secondary);
                 let mut element: Element<'_, Message> = container(hit_start_message)
                     .padding(Padding::ZERO.vertical(10))
@@ -220,54 +315,57 @@ impl State {
             .push(content)
             .push(separator::horizontal().style(style))
             .spacing(5)
+            .padding(20)
             .align_y(Alignment::Center)
             .into()
     }
 
-    fn get_user_username_and_profile_picture<'a>(
+    fn get_user_profile<'a>(
         &'a self,
         item: &'a EventTimelineItem,
     ) -> (String, Element<'a, Message>) {
         let id = item.sender();
 
-        let (username, uri) = match item.sender_profile() {
-            TimelineDetails::Ready(profile) => {
-                let display_name = match profile.display_name {
-                    Some(ref name) if name.len() > 0 => name.to_owned(),
-                    _ => id.to_string(),
-                };
-                let uri = profile.avatar_url.as_ref();
-                (display_name, uri)
-            }
-            _ => (id.to_string(), None),
+        let username = match item.sender_profile() {
+            TimelineDetails::Ready(profile) => match profile.display_name {
+                Some(ref name) if name.len() > 0 => name.to_owned(),
+                _ => id.to_string(),
+            },
+            _ => id.to_string(),
         };
 
-        let mock_pfp = container(text(username.chars().next().unwrap()))
-            .center(PROFILE_PICTURE_SIZE)
-            .style(|theme: &iced::Theme| {
-                let palette = theme.extended_palette();
-                let mut style = container::Style::default();
-                style.border = style.border.rounded(100);
-                style.background(palette.primary.base.color)
-            });
+        let mock_pfp = sensor(mock_pfp(username.chars().next().unwrap()))
+            .on_show(|_| Message::GetUser(id.to_owned()))
+            .into();
+        (username, mock_pfp)
+    }
 
-        let pfp = if let Some(img) = self.image_cache.users.get(id) {
-            match img {
-                Image::Ready(handle) => image(handle)
-                    .width(PROFILE_PICTURE_SIZE)
-                    .height(PROFILE_PICTURE_SIZE)
-                    .border_radius(100)
-                    .into(),
-                _ => mock_pfp.into(),
-            }
-        } else if let Some(uri) = uri {
-            sensor(mock_pfp)
-                .on_show(|_| Message::LoadUserAvatar(id.to_owned(), uri.to_owned()))
-                .into()
-        } else {
-            mock_pfp.into()
+    fn user_profile<'a>(&'a self, user: &'a User) -> (String, Element<'a, Message>) {
+        let username = user.display_name_or_id();
+        let username_char = username.chars().next().unwrap();
+
+        let pfp = match user.avatar() {
+            Image::Ready(handle) => image(handle)
+                .border_radius(100)
+                .width(PROFILE_PICTURE_SIZE)
+                .height(PROFILE_PICTURE_SIZE)
+                .into(),
+            Image::Fetching => mock_pfp(username_char),
+            Image::None => mock_pfp(username_char),
         };
 
         (username, pfp)
     }
+}
+
+fn mock_pfp<'a, S: text::IntoFragment<'a>>(name: S) -> Element<'a, Message> {
+    container(text(name))
+        .center(PROFILE_PICTURE_SIZE)
+        .style(|theme: &iced::Theme| {
+            let palette = theme.extended_palette();
+            let mut style = container::Style::default();
+            style.border = style.border.rounded(100);
+            style.background(palette.primary.base.color)
+        })
+        .into()
 }

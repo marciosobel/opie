@@ -6,7 +6,7 @@ use crate::{
     services::{Device, Room, TimelineEvent, UserInfo, sas_verification},
 };
 
-use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId};
+use matrix_sdk::ruma::{OwnedEventId, OwnedRoomId, OwnedUserId};
 
 /// Events emitted by the Matrix bridge.
 #[derive(Debug, Clone)]
@@ -28,11 +28,16 @@ pub enum Event {
     RoomList(HashMap<OwnedRoomId, Arc<Room>>),
     /// The timeline for a room has been updated with new events or changes to existing events. The diff contains the changes that were made to the timeline.
     TimelineEvent(TimelineEvent),
-    /// An event representing some change in the SAS verification
+    /// An event representing some change in the SAS verification.
     SasVerificationEvent(sas_verification::Event),
-    /// The devices this account is linked to
+    /// The devices this account is linked to.
     DeviceList(Vec<Device>),
+    /// The user avatar has been fetched.
     UserAvatarFetched(OwnedUserId, bytes::Bytes),
+    /// The timeline item image has been fetched.
+    TimelineImageFetched(OwnedEventId, bytes::Bytes),
+    /// The response to a `GetUser` action.
+    GetUserResponse(UserInfo),
 }
 
 impl From<Error> for Event {
@@ -75,13 +80,14 @@ impl std::fmt::Display for Event {
             Event::TimelineEvent(event) => write!(f, "TimelineEvent({})", event),
             Event::DeviceList(devices) => write!(f, "DeviceList({} devices)", devices.len()),
             Event::SasVerificationEvent(event) => write!(f, "SasVerificationEvent({})", event),
-            Event::UserAvatarFetched(user_id, bytes) => {
-                write!(
-                    f,
-                    "UserAvatarFetched {{ user_id: {}, bytes: {} bytes }}",
-                    user_id,
-                    bytes.len()
-                )
+            Event::UserAvatarFetched(user_id, _) => {
+                write!(f, "UserAvatarFetched {{ user_id: {}, .. }}", user_id)
+            }
+            Event::TimelineImageFetched(event_id, _) => {
+                write!(f, "TimelineImageFetched {{ event_id: {}, .. }}", event_id)
+            }
+            Event::GetUserResponse(info) => {
+                write!(f, "GetUserresponse {{ user_id: {}, .. }}", info.id())
             }
         }
     }

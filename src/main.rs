@@ -4,7 +4,9 @@ use opie::App;
 use tracing_subscriber::EnvFilter;
 
 fn main() -> iced::Result {
-    let env_filter = EnvFilter::from_default_env().add_directive("opie=info".parse().unwrap());
+    let env_filter = EnvFilter::from_default_env()
+        // .add_directive("matrix=info".parse().unwrap())
+        .add_directive("opie=info".parse().unwrap());
 
     tracing_subscriber::fmt()
         .with_env_filter(env_filter)

@@ -122,14 +122,19 @@ impl App {
             Event::Ready => {
                 tracing::info!("Bridge created successfully");
             }
-            Event::RoomList(_) => {}
-            Event::TimelineEvent(_) => {}
-            Event::DeviceList(_) => {}
-            Event::UserAvatarFetched(_, _) => {}
             Event::SasVerificationEvent(event) => match event {
                 sas_verification::Event::Error(error) => tracing::error!("{}", error),
                 e => self.verification_state = e.into(),
             },
+
+            // Not doing a catch-all arm because I think it's good to
+            // make the top-most wrapper of our app "aware" of all events.
+            Event::RoomList(_) => {}
+            Event::TimelineEvent(_) => {}
+            Event::DeviceList(_) => {}
+            Event::UserAvatarFetched(_, _) => {}
+            Event::TimelineImageFetched(_, _) => {}
+            Event::GetUserResponse(_) => {}
         };
 
         match &mut self.screen {

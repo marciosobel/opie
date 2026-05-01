@@ -1,19 +1,22 @@
 use crate::services::sas_verification::Action as SasAction;
 
-mod auth;
-mod media;
-mod timeline;
+pub mod auth;
+pub mod media;
+pub mod timeline;
 
 pub use auth::AuthAction;
+use matrix_sdk::ruma::OwnedUserId;
 pub use media::MediaAction;
 pub use timeline::TimelineAction;
 
 /// Actions (or commands) that can be sent to the Matrix bridge.
 #[derive(Debug, Clone)]
 pub enum Action {
-    /// Create the matrix client with the given homeserver
+    /// Create the matrix client with the given homeserver.
     CreateMatrixClient {
+        /// The homeserver to connect to.
         homeserver: String,
+        /// The passphrase to use to encrypt the database.
         passphrase: String,
     },
     /// An action related to authentication.
@@ -26,8 +29,10 @@ pub enum Action {
     ListAllRooms,
     /// Get the devices this account is linked to
     GetDevices,
-    /// Creates an emoji verification request with the specified `DeviceId`.
+    /// An action related to the SAS authentication.
     SasVerification(SasAction),
+    /// Gets the user profile of the provided [`UserId`].
+    GetUser(OwnedUserId),
 }
 
 impl std::fmt::Display for Action {
@@ -42,6 +47,7 @@ impl std::fmt::Display for Action {
             Action::GetDevices => write!(f, "GetDevices"),
             Action::SasVerification(action) => write!(f, "SasVerification::{}", action),
             Action::Media(action) => write!(f, "Media::{}", action),
+            Action::GetUser(id) => write!(f, "GetUser({})", id),
         }
     }
 }

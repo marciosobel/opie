@@ -5,7 +5,7 @@ use iced::{Task, widget::image};
 use super::{Image, Instruction, Message, State};
 
 use crate::Action;
-use crate::screen::home::FocusedRoom;
+use crate::screen::home::{FocusedRoom, User};
 use crate::screen::home::{Timeline, view::settings_popup};
 use matrix::{
     bridge::{
@@ -115,11 +115,22 @@ impl State {
                         .send(TimelineAction::SendMessage(id, message.to_string()));
                 }
             }
-            Message::LoadUserAvatar(id, uri) => {
-                if !self.image_cache.users.contains_key(&id) {
+            Message::GetUser(id) => {
+                if !self.users.contains_key(&id) && !self.is_fetching.users.contains(&id) {
+                    self.bridge.send(MatrixAction::GetUser(id.clone()));
+                    self.is_fetching.users.insert(id);
+                }
+            }
+            Message::GetUserResponse(user) => {
+                let id = user.id();
+                self.is_fetching.users.remove(&id);
+                self.users.insert(id, user);
+            }
+            Message::FetchTimelineImage(id, source) => {
+                if !self.image_cache.timeline.contains_key(&id) {
                     self.bridge
-                        .send(MediaAction::FetchUserAvatar(id.clone(), uri));
-                    self.image_cache.users.insert(id, Image::Fetching);
+                        .send(MediaAction::FetchTimelineImage(id.clone(), source));
+                    self.image_cache.timeline.insert(id, Image::Fetching);
                 }
             }
             Message::SettingsPopup(message) => {
@@ -156,7 +167,7 @@ impl State {
     fn matrix_event(&mut self, event: MatrixEvent) -> Action<Instruction, Message> {
         match event {
             MatrixEvent::RoomList(rooms) => {
-                self.is_fetching_rooms = false;
+                self.is_fetching.rooms = false;
                 self.rooms = rooms;
             }
             MatrixEvent::TimelineEvent(event) => match event {
@@ -190,10 +201,14 @@ impl State {
                 use settings_popup::Message;
                 self.settings.update(Message::DeviceList(devices));
             }
-            MatrixEvent::UserAvatarFetched(user_id, bytes) => {
+            MatrixEvent::TimelineImageFetched(id, bytes) => {
                 self.image_cache
-                    .users
-                    .insert(user_id, Image::Ready(image::Handle::from_bytes(bytes)));
+                    .timeline
+                    .insert(id, Image::Ready(image::Handle::from_bytes(bytes)));
+            }
+            MatrixEvent::GetUserResponse(info) => {
+                let task = Task::perform(async move { User::new(info) }, Message::GetUserResponse);
+                return Action::task(task);
             }
             _ => {}
         }

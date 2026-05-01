@@ -5,11 +5,11 @@ use matrix_sdk::{
     Client as ClientInner,
     config::SyncSettings,
     media::{MediaFormat, MediaRequestParameters},
-    ruma::{OwnedRoomId, api::client::filter::FilterDefinition, events::room::MediaSource},
+    ruma::{
+        OwnedRoomId, OwnedUserId, api::client::filter::FilterDefinition, events::room::MediaSource,
+    },
 };
 use tokio::sync::mpsc;
-
-pub use matrix_sdk::ruma::OwnedMxcUri;
 
 use crate::{
     Channel,
@@ -293,9 +293,9 @@ impl Client {
             .map_err(|e| Error::from(Arc::new(e)))
     }
 
-    pub(crate) async fn fetch_user_avatar(&self, uri: OwnedMxcUri) -> Result<Vec<u8>, Error> {
+    pub(crate) async fn fetch_media(&self, source: MediaSource) -> Result<Vec<u8>, Error> {
         let parameters = MediaRequestParameters {
-            source: MediaSource::Plain(uri),
+            source,
             format: MediaFormat::File,
         };
 
@@ -304,6 +304,30 @@ impl Client {
             .get_media_content(&parameters, true)
             .await
             .map_err(|e| Error::from(Arc::new(e)))
+    }
+
+    pub(crate) async fn get_profile_of(&self, id: OwnedUserId) -> Result<UserInfo, Error> {
+        let client = self.inner();
+        let account = client.account();
+        let response = account
+            .fetch_user_profile_of(&id)
+            .await
+            .map_err(|e| Error::from(Arc::new(e)))?;
+
+        let avatar = response.get("avatar_url").and_then(|s| s.as_str());
+        let display_name = response
+            .get("displayname")
+            .and_then(|s| s.as_str().map(ToString::to_string));
+
+        let avatar = match avatar {
+            Some(uri) => {
+                let source = MediaSource::Plain(uri.into());
+                Some(self.fetch_media(source).await?)
+            }
+            None => None,
+        };
+
+        Ok(UserInfo::new(id, display_name, avatar))
     }
 }
 

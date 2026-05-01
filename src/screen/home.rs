@@ -1,9 +1,15 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use iced::widget::image;
 
 use matrix::{
-    bridge::{Action as MatrixAction, Bridge, Event as MatrixEvent, OwnedMxcUri},
+    bridge::{
+        Action as MatrixAction, Bridge, Event as MatrixEvent,
+        action::media::{EventId, MediaSource},
+    },
     services::{
         room::{Room, RoomId},
         timeline,
@@ -19,12 +25,12 @@ pub struct State {
     bridge: Bridge,
     user_id: UserId,
     rooms: HashMap<RoomId, Arc<Room>>,
-    is_fetching_rooms: bool,
     collapsibles: Collapsibles,
     image_cache: ImageCache,
     focused_rooms: HashMap<RoomId, FocusedRoom>,
     settings: view::settings_popup::State,
     users: HashMap<UserId, User>,
+    is_fetching: IsFetching,
 }
 
 #[derive(Debug, Clone)]
@@ -44,7 +50,7 @@ struct Collapsibles {
 #[derive(Debug, Clone, Default)]
 struct ImageCache {
     rooms: HashMap<RoomId, Image>,
-    users: HashMap<UserId, Image>,
+    timeline: HashMap<EventId, Image>,
 }
 
 #[derive(Debug, Clone)]
@@ -52,6 +58,12 @@ struct Timeline {
     items: timeline::Vector<Arc<timeline::TimelineItem>>,
     hit_start: bool,
     hit_end: bool,
+}
+
+#[derive(Debug, Clone)]
+struct IsFetching {
+    users: HashSet<UserId>,
+    rooms: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -77,9 +89,11 @@ pub enum Message {
     MessageInputChanged(RoomId, String),
     SendMessage(RoomId),
 
-    LoadUserAvatar(UserId, OwnedMxcUri),
+    GetUser(UserId),
+    GetUserResponse(User),
 
     SettingsPopup(view::settings_popup::Message),
+    FetchTimelineImage(EventId, MediaSource),
 }
 
 #[derive(Debug, Clone)]
@@ -120,7 +134,7 @@ impl State {
             user_id,
             users,
             rooms: HashMap::new(),
-            is_fetching_rooms: true,
+            is_fetching: IsFetching::new(),
             focused_rooms: HashMap::new(),
             collapsibles: Collapsibles::default(),
             image_cache: ImageCache::default(),
@@ -143,6 +157,21 @@ impl User {
         };
 
         User { info, avatar }
+    }
+
+    pub fn avatar(&self) -> &Image {
+        &self.avatar
+    }
+
+    pub fn display_name_or<'a, S: ToString>(&'a self, fallback: S) -> String {
+        match self.display_name() {
+            Some(name) => name,
+            None => fallback.to_string(),
+        }
+    }
+
+    pub fn display_name_or_id(&self) -> String {
+        self.display_name_or(self.id())
     }
 }
 
@@ -189,3 +218,12 @@ impl PartialEq for FocusedRoom {
 }
 
 impl Eq for FocusedRoom {}
+
+impl IsFetching {
+    fn new() -> Self {
+        Self {
+            users: HashSet::new(),
+            rooms: true,
+        }
+    }
+}
