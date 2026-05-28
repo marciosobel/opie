@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use iced::{Task, widget::operation::focus_next};
-use rand::{RngExt, distr::Alphanumeric};
 
 use crate::{
     Action,
@@ -173,16 +172,8 @@ impl App {
                         return Task::none();
                     };
 
-                    tracing::info!(
-                        "Sending CreateMatrixClient and Authenticate actions to the bridge"
-                    );
-
-                    let mut rng = rand::rng();
-                    let passphrase: String = (&mut rng)
-                        .sample_iter(Alphanumeric)
-                        .take(32)
-                        .map(char::from)
-                        .collect();
+                    // FIXME: Store a random passphrase in the OS keychain.
+                    let passphrase = String::from("opie-passphrase");
 
                     bridge
                         .send(MatrixAction::CreateMatrixClient {

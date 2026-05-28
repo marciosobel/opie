@@ -6,6 +6,7 @@ use iced::{
     Alignment, Element, Length, Padding,
     widget::{column, container, image, row, sensor, space, text},
 };
+use lucide_icons::Icon;
 use matrix::services::{
     timeline::{
         EventTimelineItem, MembershipChange, MessageType, MsgLikeContent, MsgLikeKind,
@@ -237,42 +238,22 @@ impl<'a> TimelineMessage<'a> {
                 MessageType::File(content) => text!("File: {}", content.filename()).into(),
                 MessageType::Image(content) => {
                     let Some(id) = item.event_id() else {
-                        let icon = lucide_icons::Icon::ImageOff.widget().style(text::secondary);
-                        let text = text("Failed to load image").style(text::secondary);
-                        let content = row![icon, text].spacing(10).align_y(Alignment::Center);
-                        return Self::User(content.into());
+                        return Self::User(image_status(ImageStatus::Failed));
                     };
 
                     if let Some(img) = state.image_cache.timeline.get(id) {
                         match img {
-                            Image::Ready(handle) => container(image(handle)).max_height(350).into(),
-                            Image::Fetching => {
-                                let icon =
-                                    lucide_icons::Icon::Image.widget().style(text::secondary);
-                                let text = text("Loading image...").style(text::secondary);
-                                row![icon, text]
-                                    .spacing(10)
-                                    .align_y(Alignment::Center)
-                                    .into()
-                            }
-                            Image::None => {
-                                let icon =
-                                    lucide_icons::Icon::ImageOff.widget().style(text::secondary);
-                                let text = text("Failed to load image");
-                                row![icon, text]
-                                    .spacing(10)
-                                    .align_y(Alignment::Center)
-                                    .into()
-                            }
+                            Image::Ready(handle) => container(image(handle))
+                                .padding(Padding::ZERO.bottom(5))
+                                .max_height(350)
+                                .into(),
+                            Image::Fetching => image_status(ImageStatus::Loading),
+                            Image::None => image_status(ImageStatus::Failed),
                         }
                     } else {
-                        let icon = lucide_icons::Icon::Image.widget().style(text::secondary);
-                        let text = text("Loading image...").style(text::secondary);
-                        let element = row![icon, text].spacing(10).align_y(Alignment::Center);
-
-                        sensor(element)
+                        sensor(image_status(ImageStatus::Loading))
                             .key(id.to_owned())
-                            .anticipate(100)
+                            .anticipate(250)
                             .on_show(|_| {
                                 Message::FetchTimelineImage(id.to_owned(), content.source.clone())
                             })
@@ -356,6 +337,25 @@ fn mock_pfp<'a, S: text::IntoFragment<'a>>(name: S) -> Element<'a, Message> {
             style.border = style.border.rounded(100);
             style.background(palette.primary.base.color)
         })
+        .into()
+}
+
+enum ImageStatus {
+    Loading,
+    Failed,
+}
+
+fn image_status<'a>(status: ImageStatus) -> Element<'a, Message> {
+    let (content, icon) = match status {
+        ImageStatus::Loading => ("Loading image...", Icon::Image),
+        ImageStatus::Failed => ("Failed to load image", Icon::ImageOff),
+    };
+
+    let icon = icon.widget().style(text::secondary);
+    let text = text(content).style(text::secondary);
+    row![icon, text]
+        .spacing(10)
+        .align_y(Alignment::Center)
         .into()
 }
 

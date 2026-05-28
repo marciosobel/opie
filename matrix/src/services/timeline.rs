@@ -13,7 +13,7 @@ use matrix_sdk_ui::timeline::{self, RoomExt, Timeline as MatrixTimeline};
 use tokio::{sync::mpsc, task::JoinHandle};
 
 pub type TimelineDiff = VectorDiff<Arc<TimelineItem>>;
-pub use matrix_sdk::ruma::events::room::message::MessageType;
+pub use matrix_sdk::ruma::{OwnedEventId as EventId, events::room::message::MessageType};
 pub use matrix_sdk_ui::{
     eyeball_im::{Vector, VectorDiff},
     timeline::{

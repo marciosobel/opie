@@ -8,3 +8,6 @@ pub mod settings;
 pub use settings::Settings;
 
 pub mod screen;
+
+pub mod image;
+pub use image::Image;

@@ -27,18 +27,21 @@ impl State {
         let mut messages = column![].spacing(2.5);
 
         if !room.timeline.hit_start {
-            messages = messages.push(
-                sensor(
-                    center(
-                        text("Loading more messages...")
-                            .size(12)
-                            .style(text::secondary),
-                    )
-                    .padding(10),
-                )
-                .anticipate(50)
-                .on_show(|_| Message::PaginateBackwards(room_id.clone())),
-            );
+            let mut content: Element<'_, Message> = center(
+                text("Loading more messages...")
+                    .size(12)
+                    .style(text::secondary),
+            )
+            .into();
+
+            if !room.timeline.items.is_empty() {
+                content = sensor(content)
+                    .anticipate(50)
+                    .on_show(|_| Message::PaginateBackwards(room_id.clone()))
+                    .into();
+            }
+
+            messages = messages.push(content)
         }
 
         let mut previous_sender: Option<UserId> = None;
@@ -91,7 +94,7 @@ impl State {
             messages = messages.push(message_content);
         }
 
-        if !room.timeline.hit_end {
+        if !room.timeline.hit_end && !room.timeline.items.is_empty() {
             messages = messages.push(
                 sensor(space())
                     .anticipate(50)
