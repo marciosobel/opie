@@ -1,7 +1,7 @@
-use super::{DEPTH_PADDING, HORIZONTAL_PADDING, Image, Message, State};
+use super::{Image, Message, State, DEPTH_PADDING, HORIZONTAL_PADDING};
 use iced::{
-    Alignment, Color, ContentFit, Length, Padding, Theme,
     widget::{button, center, column, container, image, row, scrollable, sensor, space, text},
+    Alignment, Color, ContentFit, Length, Padding, Theme,
 };
 
 use components::collapsible::Collapsible;
@@ -121,6 +121,7 @@ impl State {
             let room_a = self.rooms.get(*a).expect("Failed to find child room");
             let room_b = self.rooms.get(*b).expect("Failed to find child room");
 
+            // show spaces above normal rooms
             match (room_a.is_space(), room_b.is_space()) {
                 (true, false) => std::cmp::Ordering::Less,
                 (false, true) => std::cmp::Ordering::Greater,
@@ -128,7 +129,7 @@ impl State {
             }
         });
 
-        for child_id in space.children() {
+        for child_id in child_ids {
             let Some(child) = self.rooms.values().find(|room| room.id() == *child_id) else {
                 tracing::error!("Failed to find child room with id {}", child_id);
                 continue;
