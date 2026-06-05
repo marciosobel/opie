@@ -1,6 +1,7 @@
 use iced::{
-    Color, Element, padding,
+    padding,
     widget::{center, container, mouse_area, opaque, row, stack},
+    Color, Element,
 };
 
 const DEPTH_PADDING: f32 = 24.0;

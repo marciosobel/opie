@@ -1,6 +1,6 @@
 use iced::{
-    Element, Length, Theme,
     widget::container::{Container, Style},
+    Element, Length, Theme,
 };
 
 /// Creates a horizontal separator. Useful for spacing list items.

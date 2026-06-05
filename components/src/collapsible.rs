@@ -1,6 +1,6 @@
 use iced::{
-    Alignment, Element, Theme,
-    widget::{Button, button, column, row},
+    widget::{button, column, row, Button},
+    Alignment, Element, Padding, Theme,
 };
 
 pub struct Collapsible<'a, Message> {
@@ -37,7 +37,7 @@ where
 {
     pub fn new(toggler: impl Into<Element<'a, Message>>) -> Self {
         Self {
-            toggler: button(toggler),
+            toggler: button(toggler).padding(Padding::ZERO),
             content: None,
             on_open: None,
             on_close: None,

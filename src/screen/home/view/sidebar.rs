@@ -1,10 +1,12 @@
 use super::{Image, Message, State, DEPTH_PADDING, HORIZONTAL_PADDING};
 use iced::{
-    widget::{button, center, column, container, image, row, scrollable, sensor, space, text},
+    widget::{
+        button, center, column, container, image, row, scrollable, sensor, space, stack, text,
+    },
     Alignment, Color, ContentFit, Length, Padding, Theme,
 };
 
-use components::collapsible::Collapsible;
+use components::{collapsible::Collapsible, separator};
 use lucide_icons::Icon;
 use matrix::services::Room;
 
@@ -18,6 +20,8 @@ const SIDEBAR_ROOM_PADDING: Padding = Padding {
 };
 const SIDEBAR_ROOM_AVATAR_SIZE: u32 = 20;
 const SIDEBAR_USER_AVATAR_SIZE: u32 = 40;
+const COLLAPSIBLE_ARROW_SIZE: f32 = 12.0;
+const COLLAPSIBLE_CONTENT_SPACING: f32 = 5.0;
 
 impl State {
     pub(super) fn sidebar(&self) -> Element<'_> {
@@ -115,6 +119,7 @@ impl State {
 
     fn space<'a>(&'a self, space: &'a Room, depth: u8) -> Element<'a> {
         let mut content = column![];
+        let left_padding = (DEPTH_PADDING * depth as f32) + HORIZONTAL_PADDING;
 
         let mut child_ids = space.children().iter().collect::<Vec<_>>();
         child_ids.sort_by(|a, b| {
@@ -135,11 +140,13 @@ impl State {
                 continue;
             };
 
-            if child.is_space() {
-                content = content.push(self.space(child, depth + 1));
+            let element = if child.is_space() {
+                self.space(child, depth + 1)
             } else {
-                content = content.push(self.room(child, depth + 1));
-            }
+                self.room(child, depth + 1)
+            };
+
+            content = content.push(element);
         }
 
         let space_name = match space.display_name() {
@@ -155,13 +162,15 @@ impl State {
 
         let space_name = text(space_name);
         let space_image = self.sidebar_room_avatar(space, false);
+        let open_icon = collapsible_arrow_icon(open);
 
-        let toggler = row![space_image, space_name]
+        let toggler = row![open_icon, space_image, space_name]
             .align_y(Alignment::Center)
-            .spacing(5);
+            .spacing(COLLAPSIBLE_CONTENT_SPACING);
+        let content = indentation_line(content, depth);
 
         collapsible(toggler, content, open, Message::ToggleSpaceOpen(space.id()))
-            .padding(SIDEBAR_ROOM_PADDING.left((DEPTH_PADDING * depth as f32) + HORIZONTAL_PADDING))
+            .padding(SIDEBAR_ROOM_PADDING.left(left_padding))
             .into()
     }
 
@@ -176,11 +185,14 @@ impl State {
 
         let content = row![room_image, room_name]
             .align_y(Alignment::Center)
-            .spacing(5);
+            .spacing(COLLAPSIBLE_CONTENT_SPACING);
+
+        let mut padding = padding_for_depth(depth);
+        padding.left -= 3.0; // center room avatar with indentation line
 
         button(content)
             .on_press(Message::OpenTimeline(room.id()))
-            .padding(SIDEBAR_ROOM_PADDING.left((DEPTH_PADDING * depth as f32) + HORIZONTAL_PADDING))
+            .padding(padding)
             .width(Length::Fill)
             .style(move |theme: &Theme, status| sidebar_room_button_style(theme, status, focused))
             .into()
@@ -188,14 +200,15 @@ impl State {
 
     fn sidebar_room_avatar<'a>(&'a self, room: &'a Room, focused: bool) -> Element<'a> {
         match self.image_cache.rooms.get(&room.id()) {
-            Some(img) => match img {
-                Image::Ready(handle) => image(handle)
-                    .width(SIDEBAR_ROOM_AVATAR_SIZE)
-                    .height(SIDEBAR_ROOM_AVATAR_SIZE)
-                    .border_radius(100)
-                    .content_fit(ContentFit::Cover)
-                    .into(),
-                _ => {
+            Some(img) => {
+                if let Image::Ready(handle) = img {
+                    image(handle)
+                        .width(SIDEBAR_ROOM_AVATAR_SIZE)
+                        .height(SIDEBAR_ROOM_AVATAR_SIZE)
+                        .border_radius(100)
+                        .content_fit(ContentFit::Cover)
+                        .into()
+                } else {
                     let placeholder: Element<'_> = match room.display_name() {
                         Some(name) if name.len() > 0 => {
                             let first_letter = name.chars().next().unwrap();
@@ -223,7 +236,7 @@ impl State {
                         .clip(true)
                         .into()
                 }
-            },
+            }
             None => {
                 let placeholder = container(space())
                     .width(SIDEBAR_ROOM_AVATAR_SIZE)
@@ -261,27 +274,29 @@ impl State {
         root_parents.sort();
 
         let direct_rooms = root_parents.iter().filter(|room| room.is_direct());
+        let dms_open = self.collapsibles.dms;
         let mut dms = column![];
         for dm in direct_rooms {
             dms = dms.push(self.room(dm, 1));
         }
 
         let dms = collapsible(
-            icon_label(Icon::Mail, "Direct Messages"),
-            dms,
-            self.collapsibles.dms,
+            icon_label(Icon::Mail, "Direct Messages", dms_open),
+            indentation_line(dms, 0),
+            dms_open,
             Message::ToggleDirectMessagesOpen,
         );
 
         let group_rooms = root_parents.iter().filter(|room| room.is_group());
+        let groups_open = self.collapsibles.groups;
         let mut groups = column![];
         for group in group_rooms {
             groups = groups.push(self.room(group, 1));
         }
         let groups = collapsible(
-            icon_label(Icon::MessagesSquare, "Groups"),
-            groups,
-            self.collapsibles.groups,
+            icon_label(Icon::MessagesSquare, "Groups", groups_open),
+            indentation_line(groups, 0),
+            groups_open,
             Message::ToggleGroupMessagesOpen,
         );
 
@@ -348,9 +363,37 @@ fn sidebar_room_button_style(
     }
 }
 
-fn icon_label<'a>(icon: Icon, label: &'a str) -> Element<'a> {
-    row![icon.widget(), text(label)]
-        .spacing(10)
+fn icon_label<'a>(icon: Icon, label: &'a str, open: bool) -> Element<'a> {
+    row![collapsible_arrow_icon(open), icon.widget(), text(label)]
+        .spacing(COLLAPSIBLE_CONTENT_SPACING)
         .align_y(Alignment::Center)
         .into()
+}
+
+#[inline]
+fn padding_for_depth(depth: u8) -> Padding {
+    SIDEBAR_ROOM_PADDING.left((DEPTH_PADDING * depth as f32) + HORIZONTAL_PADDING)
+}
+
+fn indentation_line<'a>(base: impl Into<Element<'a>>, depth: u8) -> Element<'a> {
+    let line = separator::vertical().style(|theme: &iced::Theme| {
+        let palette = theme.extended_palette();
+        container::background(palette.background.strongest.color)
+    });
+
+    let mut padding = padding_for_depth(depth).vertical(0).right(0);
+    padding.left += COLLAPSIBLE_ARROW_SIZE / 2.0;
+
+    let indentation_line = container(line).padding(padding).height(Length::Fill);
+    stack![base.into(), indentation_line].into()
+}
+
+fn collapsible_arrow_icon<'a>(open: bool) -> Element<'a> {
+    let icon = if open {
+        Icon::ChevronDown
+    } else {
+        Icon::ChevronRight
+    };
+
+    icon.widget().size(COLLAPSIBLE_ARROW_SIZE).into()
 }
